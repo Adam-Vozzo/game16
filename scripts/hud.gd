@@ -26,7 +26,8 @@ var slider_specs := [
 	{"key":"damping","label":"Internal damping","hint":"Wobbly to cushioned.","min":0.005,"max":0.16,"step":0.005,"x":374,"y":494},
 	{"key":"weight_scale","label":"Weight","hint":"Mass relative to elasticity.","min":0.25,"max":3.0,"step":0.05,"x":746,"y":282},
 	{"key":"gravity","label":"Gravity","hint":"The downward pull on every ball.","min":3.0,"max":18.0,"step":0.1,"x":746,"y":388},
-	{"key":"bowl_grip","label":"Bowl grip","hint":"Sliding resistance against the bowl.","min":0.0,"max":0.3,"step":0.005,"x":746,"y":494}]
+	{"key":"bowl_grip","label":"Bowl grip","hint":"Sliding resistance against the bowl.","min":0.0,"max":0.3,"step":0.005,"x":746,"y":494},
+	{"key":"rotation_speed","label":"Rotation speed","hint":"How quickly A / D orbits the bowl.","min":15.0,"max":150.0,"step":1.0,"x":374,"y":602}]
 
 func _ready() -> void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -53,8 +54,10 @@ func _ready() -> void:
 		var index := i
 		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,197,218,43),func(): game.set_material(index),false,16))
 	for spec in slider_specs: _slider(spec)
-	lab_button=_button(options_controls,"Collision lab",Rect2(374,602,326,44),func(): game.toggle_lab(); sync_options(),false,16)
-	slow_button=_button(options_controls,"Slow motion",Rect2(746,602,326,44),func(): game.slow_motion=not game.slow_motion; sync_options(),false,16)
+	lab_button=_button(options_controls,"Collision lab",Rect2(746,590,326,44),func(): game.toggle_lab(); sync_options(),false,16)
+	lab_button.tooltip_text="Disable merging and the spill limit."
+	slow_button=_button(options_controls,"Slow motion",Rect2(746,646,326,44),func(): game.slow_motion=not game.slow_motion; sync_options(),false,16)
+	slow_button.tooltip_text="Watch collisions at quarter speed."
 	_button(options_controls,"Reset defaults",Rect2(374,751,172,43),func(): game.reset_options(),false,14)
 	_button(options_controls,"Done",Rect2(909,751,163,43),func(): game.close_options(),true,16)
 	sync_screen()
@@ -109,7 +112,7 @@ func _slider(spec: Dictionary) -> void:
 	slider.add_theme_stylebox_override("grabber_area_highlight",_style(ACCENT,ACCENT))
 	var key: String=spec.key
 	slider.value_changed.connect(func(value):
-		game.sim.set(key,value)
+		_option_owner(key).set(key,value)
 		if key in ["stiffness","recovery","damping"]: game.material_index=-1
 		sync_options())
 	options_controls.add_child(slider)
@@ -128,8 +131,11 @@ func sync_screen() -> void:
 	sync_options()
 	queue_redraw()
 
+func _option_owner(key: String) -> Object:
+	return game if key=="rotation_speed" else game.sim
+
 func sync_options() -> void:
-	for key in sliders: sliders[key].set_value_no_signal(game.sim.get(key))
+	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
 	for i in material_buttons.size():
 		material_buttons[i].modulate=ACCENT if i==game.material_index else Color.WHITE
 		material_buttons[i].text=["Balloon","Foam","Dough"][i]+("   •" if i==game.material_index else "")
@@ -206,7 +212,6 @@ func _draw_game() -> void:
 		draw_circle(Vector2(82,y),radius+5,Color("20343a"))
 		draw_circle(Vector2(82,y),radius,SoftBall.COLORS[i])
 		draw_circle(Vector2(78,y-5),radius*0.24,Color(1,1,1,0.17))
-		text_at("%02d" % (i+1),Vector2(118,y+4),11,MUTED)
 		if i<7:
 			draw_line(Vector2(78,y-35),Vector2(82,y-39),MUTED,1)
 			draw_line(Vector2(82,y-39),Vector2(86,y-35),MUTED,1)
@@ -215,7 +220,6 @@ func _draw_game() -> void:
 		var y := 345.0+i*66
 		draw_circle(Vector2(1346,y),24,Color("20343a"))
 		draw_circle(Vector2(1346,y),18-i*2,SoftBall.COLORS[game.queue[i]])
-		centered(str(game.queue[i]+1),Vector2(1385,y+4),11,MUTED)
 	centered("A / D  rotate     W / S  trajectory     Space / Click  toss     Scroll  zoom     Esc  pause",Vector2(720,855),13,MUTED)
 	if notice_time>0: centered(notice,Vector2(720,817),14,ACCENT)
 	for popup in score_popups:
@@ -237,16 +241,15 @@ func _draw_options() -> void:
 	text_at("Shape the way things feel.",Vector2(376,172),15,MUTED)
 	for spec in slider_specs:
 		text_at(spec.label,Vector2(spec.x,spec.y),16)
-		var value: float=game.sim.get(spec.key)
+		var value: float=_option_owner(spec.key).get(spec.key)
 		var display: String
 		match spec.key:
 			"weight_scale": display="%.2f×" % value
 			"gravity": display="%.1f m/s²" % value
+			"rotation_speed": display="%.0f°/s" % value
 			_: display="%.1f%%" % (value*100)
 		var width := font.get_string_size(display,HORIZONTAL_ALIGNMENT_LEFT,-1,13).x
 		text_at(display,Vector2(spec.x+322-width,spec.y),13,ACCENT)
 		text_at(spec.hint,Vector2(spec.x,spec.y+68),12,MUTED)
-	text_at("Disable merging and the spill limit.",Vector2(382,671),12,MUTED)
-	text_at("Watch collisions at quarter speed.",Vector2(754,671),12,MUTED)
 	draw_line(Vector2(374,702),Vector2(1072,702),Color("31464b"))
-	text_at("Changes apply to every ball.",Vector2(374,729),12,MUTED)
+	text_at("Settings apply immediately.",Vector2(374,729),12,MUTED)

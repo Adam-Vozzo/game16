@@ -33,6 +33,7 @@ func run() -> void:
 	game.open_options()
 	check(game.screen==game.Screen.OPTIONS and game.hud.modal_blocker.visible,"Main menu opens shared options modal")
 	game.hud.sliders.weight_scale.value=2.0
+	game.hud.sliders.rotation_speed.value=100.0
 	var masses_updated := true
 	for ball in game.sim.balls:
 		if not is_equal_approx(ball.mass,ball.base_mass*2): masses_updated=false
@@ -46,14 +47,33 @@ func run() -> void:
 	game.hud.menu_controls.get_child(0).pressed.emit()
 	check(game.screen==game.Screen.PLAY and not game.paused,"Play starts a fresh round")
 	check(game.lab_mode and game.slow_motion and game.sim.weight_scale==2,"Starting a round preserves chosen options")
+	check(game.rotation_speed==100.0,"Starting a round preserves the rotation speed selected in Options")
+	var initial_angle: float=game.angle
+	Input.parse_input_event(key_event(KEY_D,true))
+	Input.flush_buffered_events()
+	game._process(0.25)
+	Input.parse_input_event(key_event(KEY_D,false))
+	Input.flush_buffered_events()
+	check(is_equal_approx(game.angle-initial_angle,deg_to_rad(25)),"Rotation input uses the speed selected in Options")
+	var side_distance: float=absf(game.camera.basis.x.dot(game.launch))
+	game.orbit(1.7)
+	check(side_distance>1.5 and is_equal_approx(absf(game.camera.basis.x.dot(game.launch)),side_distance),"Camera keeps the throw visibly to one side throughout rotation")
 	check(is_equal_approx(game.sim.balls[0].mass,game.sim.balls[0].base_mass*2),"New bodies inherit current weight")
 	game.reset_options()
+	check(game.rotation_speed==game.DEFAULT_ROTATION_SPEED and game.hud.sliders.rotation_speed.value==game.DEFAULT_ROTATION_SPEED,"Reset defaults restores rotation speed and its slider")
 	check(not game.lab_mode and not game.slow_motion and game.sim.weight_scale==1 and game.sim.gravity==9.8 and game.sim.bowl_grip==0.065,"Reset defaults restores material and lab settings")
+	var gameplay_camera: Transform3D=game.camera.transform
 	game.toggle_pause()
 	var before: Vector3=game.sim.balls[0].center
 	game._physics_process(0.1)
 	check(game.paused and game.sim.balls[0].center==before,"Pause freezes physics")
 	game.open_options()
+	Input.parse_input_event(key_event(KEY_A,true))
+	Input.flush_buffered_events()
+	game._process(0.25)
+	Input.parse_input_event(key_event(KEY_A,false))
+	Input.flush_buffered_events()
+	check(game.camera.transform.is_equal_approx(gameplay_camera),"Pause and Options preserve the camera angle and block rotation")
 	count=game.sim.balls.size()
 	var click := InputEventMouseButton.new()
 	click.button_index=MOUSE_BUTTON_LEFT

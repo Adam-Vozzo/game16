@@ -5,6 +5,8 @@ const MATERIALS := [[0.22,0.008,0.045],[0.30,0.003,0.12],[0.10,0.004,0.085]]
 const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
 const THROW_SPEED := 6.4
+const CAMERA_SIDE_ANGLE := PI/9.0
+const DEFAULT_ROTATION_SPEED := 52.0
 var screen := Screen.MENU
 var options_return := Screen.MENU
 var sim := SoftSimulation.new()
@@ -20,6 +22,7 @@ var lab_mode := false
 var slow_motion := false
 var material_index := 2
 var angle := 0.22
+var rotation_speed := DEFAULT_ROTATION_SPEED
 var zoom := 11.8
 var target := Vector3(0,0.65,0)
 var launch := Vector3.ZERO
@@ -202,9 +205,11 @@ func _update_held() -> void:
 	held.material_override=SoftGeometry.material(SoftBall.COLORS[queue[0]],0.31)
 
 func _update_camera() -> void:
-	camera.position=Vector3(sin(angle)*15,12,cos(angle)*15)
-	camera.look_at(Vector3(0,0.5,0))
 	var menu_backdrop := screen==Screen.MENU or (screen==Screen.OPTIONS and options_return==Screen.MENU)
+	# View the throw from slightly beside it so the arc reads in profile.
+	var camera_angle := angle+(0.0 if menu_backdrop else CAMERA_SIDE_ANGLE)
+	camera.position=Vector3(sin(camera_angle)*15,12,cos(camera_angle)*15)
+	camera.look_at(Vector3(0,0.5,0))
 	camera.position+=camera.basis.x*(-3.55 if menu_backdrop else 0.0)
 	camera.size=13.5 if menu_backdrop else zoom
 	launch=Vector3(sin(angle)*5.05,3.25,cos(angle)*5.05)
@@ -282,6 +287,7 @@ func set_material(index: int) -> void:
 	hud.sync_options()
 
 func reset_options() -> void:
+	rotation_speed=DEFAULT_ROTATION_SPEED
 	sim.weight_scale=1.0
 	sim.gravity=9.8
 	sim.bowl_grip=0.065
@@ -300,8 +306,8 @@ func _process(delta: float) -> void:
 	frame+=1
 	if not paused:
 		cooldown=maxf(0,cooldown-delta)
-		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*0.9)
-		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*0.9)
+		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*deg_to_rad(rotation_speed))
+		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*deg_to_rad(rotation_speed))
 		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*32)
 		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): adjust_elevation(-delta*32)
 	for ball in sim.balls: ball.update_visual()
