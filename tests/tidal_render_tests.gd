@@ -40,9 +40,33 @@ func run() -> void:
             difference+=d
             if d>0.004: changed+=1
     print("SSS VISUAL CHECK: Forward+=",game.desktop_effects," changed samples=",changed," summed RGB delta=",difference)
+    # Compare actual pixels, independently of the variables the sliders update.
+    for setting in ["ball_glow","ball_light_strength","bloom_intensity","bloom_threshold","bloom_floor","exposure"]:
+        var original: float=game.get(setting)
+        var comparisons: Array[Image]=[]
+        for value in ([0.5,2.0] if setting=="exposure" else ([0.1,3.0] if setting=="bloom_threshold" else [0.0,1.0])):
+            game.set_performance_option(setting,value)
+            game.tidal.update(0)
+            for i in 8: await process_frame
+            await RenderingServer.frame_post_draw
+            comparisons.append(root.get_texture().get_image())
+        var delta := 0.0
+        for y in range(250,620,4):
+            for x in range(450,1000,4):
+                var a := comparisons[0].get_pixel(x,y)
+                var b := comparisons[1].get_pixel(x,y)
+                delta+=absf(a.r-b.r)+absf(a.g-b.g)+absf(a.b-b.b)
+        print("POST VISUAL CHECK: ",setting," summed RGB delta=",delta)
+        valid=valid and delta>1.0
+        game.set_performance_option(setting,original)
+        game.tidal.update(0)
     game.open_options()
     game.hud.option_tabs[1].pressed.emit()
     for i in 4: await process_frame
     await RenderingServer.frame_post_draw
     root.get_texture().get_image().save_png("res://captures/tidal-lighting-options.png")
+    game.hud.option_tabs[2].pressed.emit()
+    for i in 4: await process_frame
+    await RenderingServer.frame_post_draw
+    root.get_texture().get_image().save_png("res://captures/post-processing-options.png")
     quit(0 if valid and changed>0 and game.desktop_effects else 1)

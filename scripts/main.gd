@@ -6,7 +6,7 @@ const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
 const THROW_SPEED := 6.4
 const DEFAULT_ROTATION_SPEED := 52.0
-const PERFORMANCE_DEFAULTS := {"ball_detail":2,"visual_rate":60,"shadows_enabled":true,"antialiasing":2,"merge_effects":2,"show_fps":false,"lighting_quality":2,"bloom_enabled":true,"sss_enabled":true}
+const PERFORMANCE_DEFAULTS := {"ball_detail":2,"visual_rate":60,"shadows_enabled":true,"antialiasing":2,"merge_effects":2,"show_fps":false,"lighting_quality":2,"bloom_enabled":true,"sss_enabled":true,"ball_glow":1.0,"ball_light_strength":1.0,"bloom_intensity":0.65,"bloom_threshold":0.85,"bloom_floor":0.08,"exposure":1.0}
 var screen := Screen.MENU
 var options_return := Screen.MENU
 var reset_return := Screen.PAUSE
@@ -32,6 +32,12 @@ var desktop_effects := false
 var lighting_quality := 2
 var bloom_enabled := true
 var sss_enabled := true
+var ball_glow := 1.0
+var ball_light_strength := 1.0
+var bloom_intensity := 0.65
+var bloom_threshold := 0.85
+var bloom_floor := 0.08
+var exposure := 1.0
 var tidal: TidalLighting
 var environment_settings: Environment
 var key_light: DirectionalLight3D
@@ -131,10 +137,12 @@ func _build_stage() -> void:
 	env.ssao_radius = 1.0
 	env.ssao_intensity = 1.5
 	env.glow_enabled=bloom_enabled
-	env.glow_intensity=0.65
-	env.glow_bloom=0.08
-	env.glow_hdr_threshold=0.85
+	env.glow_intensity=bloom_intensity
+	env.glow_bloom=bloom_floor
+	env.glow_hdr_threshold=bloom_threshold
+	env.tonemap_exposure=exposure
 	environment_settings=env
+	RenderingServer.global_shader_parameter_set("tidal_emission",ball_glow)
 	RenderingServer.global_shader_parameter_set("tidal_scattering",0.55 if sss_enabled else 0.0)
 	environment.environment = env
 	add_child(environment)
@@ -376,6 +384,22 @@ func reset_dev_tweaks() -> void:
 
 func set_performance_option(key: String,value: Variant) -> void:
 	match key:
+		"ball_glow":
+			ball_glow=clampf(float(value),0.0,5.0)
+			RenderingServer.global_shader_parameter_set("tidal_emission",ball_glow)
+		"ball_light_strength": ball_light_strength=clampf(float(value),0.0,3.0)
+		"bloom_intensity":
+			bloom_intensity=clampf(float(value),0.0,2.0)
+			environment_settings.glow_intensity=bloom_intensity
+		"bloom_threshold":
+			bloom_threshold=clampf(float(value),0.1,3.0)
+			environment_settings.glow_hdr_threshold=bloom_threshold
+		"bloom_floor":
+			bloom_floor=clampf(float(value),0.0,1.0)
+			environment_settings.glow_bloom=bloom_floor
+		"exposure":
+			exposure=clampf(float(value),0.5,2.0)
+			environment_settings.tonemap_exposure=exposure
 		"lighting_quality": lighting_quality=clampi(int(value),0,2)
 		"bloom_enabled":
 			bloom_enabled=bool(value) and desktop_effects

@@ -18,6 +18,6 @@ void fragment() {
     SPECULAR = 0.65;
     CLEARCOAT = 0.5;
     CLEARCOAT_ROUGHNESS = 0.2;
-    EMISSION = pearl * (rim * 0.45 + jelly.x * (0.5 + jelly.y * 0.7));
+    EMISSION = tidal_emission * pearl * (rim * 0.45 + jelly.x * (0.5 + jelly.y * 0.7));
     ALPHA = 0.12 + rim * 0.48 + jelly.x * 0.14;
 }

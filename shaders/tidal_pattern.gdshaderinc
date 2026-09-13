@@ -1,4 +1,5 @@
 global uniform float tidal_time;
+global uniform float tidal_emission;
 
 // Cage-attached coordinates stretch the canals with the soft body.
 vec2 jelly_pattern(vec3 p) {

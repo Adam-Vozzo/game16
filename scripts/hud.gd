@@ -34,12 +34,18 @@ var performance_specs := [
 	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":538},
 	{"key":"lighting_quality","label":"Living lights","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Cells and merges illuminate their surroundings.","x":374,"y":282,"page":3},
 	{"key":"sss_enabled","label":"Subsurface scattering","choices":["Off","On"],"values":[false,true],"hint":"Soft light diffusion through the inner tissue.","x":746,"y":282,"page":3,"desktop":true},
-	{"key":"bloom_enabled","label":"Bloom","choices":["Off","On"],"values":[false,true],"hint":"A gentle halo around luminous filaments.","x":374,"y":410,"page":3,"desktop":true}]
+	{"key":"bloom_enabled","label":"Bloom","choices":["Off","On"],"values":[false,true],"hint":"","x":374,"y":588,"page":4,"desktop":true}]
 var score_popups: Array[Dictionary] = []
 var merge_stars: Array[Dictionary] = []
 var notice := ""
 var notice_time := 0.0
 var slider_specs := [
+	{"key":"ball_glow","label":"Ball glow","hint":"Brightness of tissue and luminous filaments.","min":0.0,"max":5.0,"step":0.05,"x":374,"y":282,"page":4},
+	{"key":"ball_light_strength","label":"Cast light strength","hint":"Light from balls and merges onto the bowl.","min":0.0,"max":3.0,"step":0.05,"x":746,"y":282,"page":4},
+	{"key":"bloom_intensity","label":"Bloom intensity","hint":"Strength of the halo around bright areas.","min":0.0,"max":2.0,"step":0.05,"x":374,"y":388,"page":4,"desktop":true},
+	{"key":"bloom_threshold","label":"Bloom threshold","hint":"Lower values let more surfaces bloom.","min":0.1,"max":3.0,"step":0.05,"x":746,"y":388,"page":4,"desktop":true},
+	{"key":"bloom_floor","label":"Ambient bloom","hint":"Adds a soft haze beyond the highlights.","min":0.0,"max":1.0,"step":0.01,"x":374,"y":494,"page":4,"desktop":true},
+	{"key":"exposure","label":"Scene exposure","hint":"Overall scene brightness before tone mapping.","min":0.5,"max":2.0,"step":0.05,"x":746,"y":494,"page":4,"desktop":true},
 	{"key":"stiffness","label":"Firmness","hint":"Yielding to springy.","min":0.06,"max":0.6,"step":0.01,"x":374,"y":282},
 	{"key":"recovery","label":"Shape recovery","hint":"How quickly a dent rounds out.","min":0.001,"max":0.035,"step":0.001,"x":374,"y":388},
 	{"key":"damping","label":"Internal damping","hint":"Wobbly to cushioned.","min":0.005,"max":0.16,"step":0.005,"x":374,"y":494},
@@ -91,7 +97,7 @@ func _ready() -> void:
 	_button(reset_controls,"Reset round",Rect2(734,482,198,52),func(): game.restart(),true,16)
 	options_controls=_group(modal_blocker)
 	_button(options_controls,"×",Rect2(1042,105,40,40),func(): game.close_options(),false,24)
-	for i in 2:
+	for i in 3:
 		var page := i
 		option_tabs.append(_button(options_controls,"",Rect2(374+i*356,194,342,42),func():
 			if game.screen==game.Screen.DEV_TWEAKS: dev_page=page; option_page=page
@@ -172,7 +178,8 @@ func _slider(spec: Dictionary) -> void:
 	slider.add_theme_stylebox_override("grabber_area_highlight",_style(ACCENT,ACCENT))
 	var key: String=spec.key
 	slider.value_changed.connect(func(value):
-		if _option_owner(key)==game: game.set_play_option(key,value)
+		if spec.get("page",0)>=2: game.set_performance_option(key,value)
+		elif _option_owner(key)==game: game.set_play_option(key,value)
 		else: game.sim.set(key,value)
 		if key in ["stiffness","recovery","damping"]: game.material_index=-1
 		sync_options())
@@ -198,11 +205,17 @@ func _option_owner(key: String) -> Object:
 
 func sync_options() -> void:
 	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
-	for spec in slider_specs: sliders[spec.key].visible=spec.get("page",0)==option_page
+	for spec in slider_specs:
+		var slider: HSlider=sliders[spec.key]
+		slider.visible=spec.get("page",0)==option_page
+		slider.editable=not spec.get("desktop",false) or game.desktop_effects
+		slider.modulate=Color.WHITE if slider.editable else Color(1,1,1,0.3)
 	for i in option_tabs.size():
 		var dev: bool=game.screen==game.Screen.DEV_TWEAKS
-		option_tabs[i].visible=game.screen in [game.Screen.DEV_TWEAKS,game.Screen.OPTIONS]
-		option_tabs[i].text=(["Material & lab","Throw & camera"] if dev else ["Performance","Tidal lighting"])[i]
+		option_tabs[i].visible=game.screen in [game.Screen.DEV_TWEAKS,game.Screen.OPTIONS] and (not dev or i<2)
+		option_tabs[i].position=Vector2(374+i*(356 if dev else 238),194)
+		option_tabs[i].size=Vector2(342 if dev else 222,42)
+		option_tabs[i].text=(["Material & lab","Throw & camera",""] if dev else ["Performance","Tidal lighting","Post-processing"])[i]
 		option_tabs[i].modulate=ACCENT if i+(0 if dev else 2)==option_page else Color.WHITE
 	for i in material_buttons.size():
 		material_buttons[i].visible=option_page==0
@@ -443,10 +456,14 @@ func _draw_options() -> void:
 			text_at(spec.hint,Vector2(spec.x,spec.y+84),12,MUTED)
 		text_at("Current frame rate: %d FPS" % Engine.get_frames_per_second(),Vector2(374,669),15,ACCENT)
 		if option_page==2: text_at("Try lower ball detail and shadows off first.",Vector2(746,669),12,MUTED)
-		else:
+		elif option_page==3:
 			text_at("Forward+ desktop" if game.desktop_effects else "Browser / Compatibility",Vector2(746,423),18,ACCENT)
-			text_at("Up to 8 living lights." if game.desktop_effects else "Up to 4 living lights, backlit tissue.",Vector2(746,457),13,MUTED)
-			text_at("Scattering and bloom can be compared live." if game.desktop_effects else "Try the desktop build for scattering and bloom.",Vector2(374,570),15,MUTED)
+			text_at("Full: 44 balls + 2 merge lights." if game.desktop_effects else "Full: 4 lights. Reduced: 2 lights.",Vector2(746,457),13,MUTED)
+			text_at("Reduced uses up to 16 lights." if game.desktop_effects else "Backlit tissue keeps the browser lightweight.",Vector2(374,457),13,MUTED)
+			text_at("Tune bloom and ball brightness in Post-processing.",Vector2(374,570),15,MUTED)
+		elif option_page==4:
+			text_at("Cast light uses the Living lights setting.",Vector2(746,611),12,MUTED)
+			text_at("Bloom and exposure require desktop Forward+." if not game.desktop_effects else "Bloom sliders apply when Bloom is on.",Vector2(746,635),12,MUTED)
 	if option_page==1: text_at("Stop at the first predicted contact.",Vector2(746,670),12,MUTED)
 	for spec in slider_specs:
 		if spec.get("page",0)!=option_page: continue
@@ -454,6 +471,8 @@ func _draw_options() -> void:
 		var value: float=_option_owner(spec.key).get(spec.key)
 		var display: String
 		match spec.key:
+			"ball_glow","ball_light_strength","exposure": display="%.2f×" % value
+			"bloom_threshold": display="%.2f" % value
 			"weight_scale": display="%.2f×" % value
 			"gravity": display="%.1f m/s²" % value
 			"rotation_speed","trajectory_speed": display="%.0f°/s" % value
@@ -461,6 +480,7 @@ func _draw_options() -> void:
 			"camera_height": display="%.1f°" % value
 			"throw_speed": display="%.1f m/s" % value
 			_: display="%.1f%%" % (value*100)
+		if spec.get("desktop",false) and not game.desktop_effects: display="Desktop only"
 		var width := font.get_string_size(display,HORIZONTAL_ALIGNMENT_LEFT,-1,13).x
 		text_at(display,Vector2(spec.x+322-width,spec.y),13,ACCENT)
 		text_at(spec.hint,Vector2(spec.x,spec.y+68),12,MUTED)

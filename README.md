@@ -18,15 +18,17 @@ Web uses Godot's Compatibility renderer and a single-threaded export, so it runs
 
 ## Tidal Glow experiment
 
-The separate local Windows build is `build/SoftMountain-TidalGlow.exe`. It uses Forward+ with real screen-space subsurface scattering on the opaque inner tissue, transmittance, and HDR bloom. **Options → Tidal lighting** lets you compare living lights, scattering, and bloom independently. Godot only implements subsurface scattering in Forward+ ([documentation](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html#subsurface-scattering)).
+The separate local Windows build is `build/SoftMountain-TidalGlow-Lighting.exe`. It uses Forward+ with real screen-space subsurface scattering on the opaque inner tissue, transmittance, and HDR bloom. **Options → Tidal lighting** controls living lights and scattering. **Options → Post-processing** adds ball glow (0–5×), cast light strength (0–3×), bloom on/off, bloom intensity (0–200%), bloom threshold (0.1–3), ambient bloom (0–100%), and scene exposure (0.5–2×). Settings apply immediately and persist between bowls for the session; Reset defaults restores them. Ball glow changes tissue and filament emission, while cast light strength controls illumination of the bowl and nearby cells, including merge flashes. Godot only implements subsurface scattering in Forward+ ([documentation](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html#subsurface-scattering)).
 
-The browser build uses the same membrane, filaments, tier colours and physics, with backlighting as a cheaper tissue approximation. Scattering and bloom are disabled there. The living-light pool is bounded at eight lights on desktop or four on the browser; Reduced uses half that budget and is the browser default. The largest cells light the bowl and neighbouring bodies; merges briefly reserve pool slots for coloured light pulses. These point lights do not cast additional shadows. Living lights Off retains the emissive filament pattern.
+The browser build uses the same membrane, filaments, tier colours and physics, with backlighting as a cheaper tissue approximation. Scattering, bloom, and exposure controls are disabled there; ball glow and cast light strength remain adjustable. Desktop Full lighting has 46 slots: enough for all 44 balls and two simultaneous merge flashes, so low-tier cells keep their lights even in a full bowl. Desktop Reduced uses 16 lights. Browser Full remains capped at four lights, with two on Reduced (the browser default). Reduced budgets prioritize larger cells and merge flashes. These point lights do not cast additional shadows. Living lights Off retains the emissive filament pattern.
 
 Filaments use coordinates attached to the undeformed cage, so they stretch with the actual simulated tissue. Their travelling light pulses and the stylized caustic pattern on the bowl freeze with Pause and follow slow motion. The caustics are a procedural material effect, not a fluid or optical simulation. The dark rock rim and small coral shapes use two static instanced meshes, with no added collision geometry. No refraction, volumetric water or real-time global illumination is implied by the translucent look.
 
 ![Tidal Glow desktop scattering](docs/tidal-desktop.png)
 
-Validation includes fixed light budgets, effect expiry, pause behaviour, deformation coordinates, platform capability controls and an actual Forward+ scattering on/off image comparison. The render comparison also checks that turning scattering off leaves valid lit tissue.
+Validation includes fixed light budgets, effect expiry, pause behaviour, deformation coordinates, platform capability controls and an actual Forward+ scattering on/off image comparison. The render comparison also checks that turning scattering off leaves valid lit tissue and verifies that every post-processing slider changes the rendered pixels. A full 44-ball pile with two simultaneous merges is tested for light coverage.
+
+![Post-processing options](docs/post-processing-options.png)
 
 ## Play
 

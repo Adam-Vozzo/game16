@@ -20,6 +20,7 @@ void fragment() {
     BACKLIGHT = tint.rgb * 0.48;
     EMISSION = tint.rgb * (0.10 + 0.08 * (1.0 - facing)) + pearl * jelly.x * (0.32 + jelly.y * 0.38);
     if (OUTPUT_IS_SRGB) { EMISSION += tint.rgb * 0.18; }
+    EMISSION *= tidal_emission;
     // Only Forward+ implements this scattering pass; Web uses BACKLIGHT.
     #if CURRENT_RENDERER == RENDERER_FORWARD_PLUS
     SSS_STRENGTH = tidal_scattering;

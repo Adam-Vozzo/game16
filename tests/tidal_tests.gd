@@ -18,13 +18,25 @@ func run() -> void:
 	game.set_physics_process(false)
 	game.hud.set_process(false)
 	game.restart()
-	for i in 12: game.sim.spawn(i%8,Vector3(i*0.1,2,0))
+	for i in range(SoftSimulation.MAX_BALLS-game.sim.balls.size()): game.sim.spawn(i%8,Vector3(i*0.1,2,0))
 	game.set_performance_option("lighting_quality",2)
 	game.tidal.update(0.1)
-	check(visible_lights(game)==game.tidal.lamps.size() and game.tidal.lamps.size()<=8,"A crowded pile respects the fixed platform light budget")
+	check(visible_lights(game)==(44 if game.desktop_effects else 4),"Full lights cover every desktop ball; browser keeps four")
+	game.tidal.burst(Vector3(1,2,3),1)
+	game.tidal.burst(Vector3(-1,2,3),2)
+	game.tidal.update(0)
+	check(visible_lights(game)==(46 if game.desktop_effects else 4),"Two simultaneous merges fit alongside the entire desktop pile")
+	var all_lit := true
+	for ball in game.sim.balls:
+		var found := false
+		for lamp in game.tidal.lamps:
+			if lamp.visible and lamp.position.is_equal_approx(ball.center+Vector3.UP*ball.radius*0.4) and lamp.light_color==SoftBall.COLORS[ball.tier]: found=true
+		all_lit=all_lit and found
+	check(all_lit if game.desktop_effects else true,"Even the smallest desktop bodies retain their light during merges")
+	game.tidal.clear()
 	game.set_performance_option("lighting_quality",1)
 	game.tidal.update(0)
-	check(visible_lights(game)==game.tidal.lamps.size()/2,"Reduced lighting halves the active light budget")
+	check(visible_lights(game)==(16 if game.desktop_effects else 2),"Reduced lighting uses sixteen desktop lights or two browser lights")
 	game.set_performance_option("lighting_quality",0)
 	game.tidal.update(0)
 	check(visible_lights(game)==0,"Living lights Off disables every pooled lamp")
@@ -63,6 +75,28 @@ func run() -> void:
 	game.set_performance_option("sss_enabled",false)
 	game.set_performance_option("bloom_enabled",false)
 	check(not game.sss_enabled and not game.environment_settings.glow_enabled,"Desktop scattering and bloom can be switched off independently")
+	game.hud.option_tabs[2].pressed.emit()
+	check(game.hud.sliders.ball_glow.visible and game.hud.performance_buttons.bloom_enabled.visible and not game.hud.performance_buttons.sss_enabled.visible,"Post-processing has a separate tab with emission and bloom controls")
+	check(game.hud.sliders.bloom_intensity.editable==game.desktop_effects and game.hud.sliders.ball_glow.editable,"Browser can tune emission while unsupported bloom sliders are disabled")
+	game.hud.sliders.ball_glow.value=2.5
+	game.hud.sliders.ball_light_strength.value=2.0
+	game.tidal.update(0)
+	var bright_energy: float=game.tidal.lamps[0].light_energy
+	game.hud.sliders.ball_light_strength.value=1.0
+	game.tidal.update(0)
+	check(game.ball_glow==2.5 and is_equal_approx(bright_energy,game.tidal.lamps[0].light_energy*2.0),"UI sliders independently control ball emission and real light energy")
+	game.hud.sliders.ball_light_strength.value=0.0
+	game.tidal.update(0)
+	check(visible_lights(game)==0 and game.ball_glow==2.5,"Zero cast light disables lamps while preserving ball glow")
+	game.set_performance_option("bloom_intensity",1.2)
+	game.set_performance_option("bloom_threshold",1.5)
+	game.set_performance_option("bloom_floor",0.2)
+	game.set_performance_option("exposure",1.4)
+	check(is_equal_approx(game.environment_settings.glow_intensity,1.2) and is_equal_approx(game.environment_settings.glow_hdr_threshold,1.5) and is_equal_approx(game.environment_settings.glow_bloom,0.2) and is_equal_approx(game.environment_settings.tonemap_exposure,1.4),"Post-processing parameters reach the live environment")
+	game.restart()
+	check(game.ball_glow==2.5 and game.bloom_intensity==1.2,"New bowl preserves post-processing choices")
+	game.reset_options()
+	check(game.ball_glow==1.0 and game.ball_light_strength==1.0 and is_equal_approx(game.environment_settings.glow_intensity,0.65) and game.environment_settings.tonemap_exposure==1.0,"Reset defaults restores light and post-processing settings")
 	game.free()
 	print("TIDAL RESULT: ",checks-failures,"/",checks," passed")
 	quit(0 if failures==0 else 1)
