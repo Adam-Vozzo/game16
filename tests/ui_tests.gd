@@ -32,6 +32,18 @@ func run() -> void:
 	check(game.sim.balls.size()==count,"Main menu cannot throw into its backdrop")
 	game.open_options()
 	check(game.screen==game.Screen.OPTIONS and game.hud.modal_blocker.visible,"Main menu opens shared options modal")
+	game.hud.option_tabs[1].pressed.emit()
+	check(game.hud.sliders.throw_speed.visible and not game.hud.sliders.weight_scale.visible,"Throw and camera tab reveals its own controls")
+	game.hud.sliders.min_elevation.value=10
+	game.hud.sliders.max_elevation.value=45
+	game.hud.sliders.trajectory_speed.value=60
+	game.hud.sliders.throw_speed.value=8
+	game.hud.sliders.camera_height.value=55
+	game.hud.sliders.camera_offset.value=-30
+	var tuned_camera: Transform3D=game.camera.transform
+	check(is_equal_approx(game._launch_velocity().length(),8.0),"Launch speed updates the actual throw velocity")
+	game.hud.option_tabs[0].pressed.emit()
+	check(game.hud.sliders.weight_scale.visible and not game.hud.sliders.throw_speed.visible,"Material tab keeps gameplay sliders hidden")
 	game.hud.sliders.weight_scale.value=2.0
 	game.hud.sliders.rotation_speed.value=100.0
 	var masses_updated := true
@@ -48,6 +60,22 @@ func run() -> void:
 	check(game.screen==game.Screen.PLAY and not game.paused,"Play starts a fresh round")
 	check(game.lab_mode and game.slow_motion and game.sim.weight_scale==2,"Starting a round preserves chosen options")
 	check(game.rotation_speed==100.0,"Starting a round preserves the rotation speed selected in Options")
+	check(game.min_elevation==10 and game.max_elevation==45 and game.throw_speed==8 and game.trajectory_speed==60 and game.camera_height==55 and game.camera_offset==-30,"New rounds preserve throw and camera settings")
+	var throw_angle: float=game.throw_elevation
+	Input.parse_input_event(key_event(KEY_W,true))
+	Input.flush_buffered_events()
+	game._process(0.1)
+	Input.parse_input_event(key_event(KEY_W,false))
+	Input.flush_buffered_events()
+	check(is_equal_approx(game.throw_elevation-throw_angle,6),"W/S uses the selected trajectory adjustment speed")
+	game.adjust_elevation(1000)
+	check(game.throw_elevation==45,"Custom maximum trajectory clamps keyboard input")
+	game.adjust_elevation(-1000)
+	check(game.throw_elevation==10,"Custom minimum trajectory clamps keyboard input")
+	game.set_play_option("min_elevation",70)
+	check(game.min_elevation==40 and game.throw_elevation==40,"Crossing trajectory limits preserves a five-degree range and clamps the current shot")
+	game.set_play_option("max_elevation",-30)
+	check(game.max_elevation==45,"Maximum trajectory cannot cross below minimum")
 	var initial_angle: float=game.angle
 	Input.parse_input_event(key_event(KEY_D,true))
 	Input.flush_buffered_events()
@@ -60,6 +88,8 @@ func run() -> void:
 	check(side_distance>1.5 and is_equal_approx(absf(game.camera.basis.x.dot(game.launch)),side_distance),"Camera keeps the throw visibly to one side throughout rotation")
 	check(is_equal_approx(game.sim.balls[0].mass,game.sim.balls[0].base_mass*2),"New bodies inherit current weight")
 	game.reset_options()
+	check(game.min_elevation==-12 and game.max_elevation==68 and game.throw_speed==6.4 and game.trajectory_speed==32 and game.camera_height==37.5 and game.camera_offset==20,"Defaults restore every throw and camera setting")
+	check(not game.camera.transform.is_equal_approx(tuned_camera),"Camera tuning affects its transform")
 	check(game.rotation_speed==game.DEFAULT_ROTATION_SPEED and game.hud.sliders.rotation_speed.value==game.DEFAULT_ROTATION_SPEED,"Reset defaults restores rotation speed and its slider")
 	check(not game.lab_mode and not game.slow_motion and game.sim.weight_scale==1 and game.sim.gravity==9.8 and game.sim.bowl_grip==0.065,"Reset defaults restores material and lab settings")
 	var gameplay_camera: Transform3D=game.camera.transform
@@ -137,9 +167,31 @@ func run() -> void:
 	check(game.hud.score_popups.is_empty(),"Floating scores expire after rising and fading")
 	game.toggle_pause()
 	game.hud.pause_controls.get_child(2).pressed.emit()
-	check(game.screen==game.Screen.PLAY and game.score==0 and game.sim.balls.size()==3,"New bowl from pause resets the round")
+	count=game.sim.balls.size()
+	check(game.screen==game.Screen.CONFIRM_RESET and game.score==40,"New bowl asks before resetting the current score")
+	game._unhandled_input(click)
+	game._unhandled_input(key_event(KEY_SPACE,true))
+	game._physics_process(1)
+	check(game.sim.balls.size()==count and game.score==40,"Reset warning freezes the round and blocks throws")
+	game.hud.reset_controls.get_child(0).pressed.emit()
+	check(game.screen==game.Screen.PAUSE and game.score==40 and game.sim.balls.size()==count,"Cancel keeps the current bowl intact")
+	game.request_new_bowl()
+	game.toggle_pause()
+	check(game.screen==game.Screen.PAUSE and game.score==40,"Escape cancels the reset warning")
+	game.request_new_bowl()
+	game.hud.reset_controls.get_child(1).pressed.emit()
+	check(game.screen==game.Screen.PLAY and game.score==0 and game.sim.balls.size()==3,"Confirming New bowl resets the round")
+	var ball: SoftBall=game.sim.balls[0]
+	ball.points[0]+=Vector3(0.04,-0.08,0.03)
+	ball.update_center()
+	ball.update_visual()
+	check(ball.core_instance.mesh==ball.mesh_instance.mesh and ball.core_instance.scale==Vector3.ONE*0.76 and ball.mesh_instance.position==ball.center,"Cell layers share the deformed mesh and remain centered together")
 	game.game_over=true
 	game.set_screen(game.Screen.GAME_OVER)
+	game.hud.end_controls.get_child(0).pressed.emit()
+	check(game.screen==game.Screen.CONFIRM_RESET,"New bowl also warns after game over")
+	game.cancel_new_bowl()
+	check(game.screen==game.Screen.GAME_OVER,"Cancel returns to the game-over screen")
 	game.open_options()
 	game.toggle_lab()
 	game.close_options()
@@ -153,9 +205,36 @@ func run() -> void:
 	game.close_options()
 	check(game.screen==game.Screen.MENU,"Lab toggle from the main menu keeps the correct return screen")
 	game.free()
+	_test_throw_preview()
 	_test_materials()
 	print("UI / MATERIAL RESULT: ",checks-failures,"/",checks," passed")
 	quit(0 if failures==0 else 1)
+
+func _test_throw_preview() -> void:
+	var game = load("res://scenes/main.tscn").instantiate()
+	root.add_child(game)
+	game.restart()
+	var valid := true
+	for speed in [2.0,6.4,12.0]:
+		game.throw_speed=speed
+		for pitch in [-35.0,24.0,80.0]:
+			game.throw_elevation=pitch
+			var velocity: Vector3=game._launch_velocity()
+			var flight: float=game._landing_time(velocity)
+			var end: Vector3=game.launch+velocity*flight+Vector3.DOWN*game.sim.gravity*flight*flight*0.5
+			var surface: float=0.075*(end.x*end.x+end.z*end.z)+SoftBall.RADII[game.queue[0]]
+			if not end.is_finite() or absf(end.y-surface)>0.001: valid=false
+	check(valid,"Preview meets the bowl profile across the launch-speed and trajectory ranges")
+	game.throw_elevation=24.0
+	var velocity: Vector3=game._launch_velocity()
+	valid=true
+	for height in [20.0,70.0]:
+		for offset in [-65.0,0.0,65.0]:
+			game.set_play_option("camera_height",height)
+			game.set_play_option("camera_offset",offset)
+			if not game.camera.transform.is_finite() or not game._launch_velocity().is_equal_approx(velocity): valid=false
+	check(valid,"Extreme camera settings stay finite and leave the throw direction unchanged")
+	game.free()
 
 func _test_materials() -> void:
 	var centers: Array[float]=[]

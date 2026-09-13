@@ -31,7 +31,8 @@ var previous_dt := 1.0/180.0
 var escaped_time := 0.0
 var alive := true
 var mesh_instance: MeshInstance3D
-var render_edges := PackedVector2Array()
+var core_instance: MeshInstance3D
+var render_edges := PackedVector3Array()
 var render_indices := PackedInt32Array()
 
 func _init(level: int, origin: Vector3, initial_velocity: Vector3, topology: Dictionary) -> void:
@@ -150,36 +151,48 @@ func constrain(stiffness: float, recovery: float, weight: float = 1.0) -> void:
 			points[i] += offset/length*(radius-length)*recovery
 
 func _build_render_topology() -> void:
-	var cache := {}
-	for f in range(0,faces.size(),3):
-		var a := faces[f]
-		var b := faces[f+1]
-		var c := faces[f+2]
-		var mids: Array[int] = []
-		for edge in [Vector2i(a,b),Vector2i(b,c),Vector2i(c,a)]:
-			var key := Vector2i(mini(edge.x,edge.y),maxi(edge.x,edge.y))
-			if not cache.has(key):
-				cache[key] = points.size()+render_edges.size()
-				render_edges.append(Vector2(key.x,key.y))
-			mids.append(cache[key])
-		# Godot uses clockwise front faces; the simulation uses outward CCW faces.
-		render_indices.append_array(PackedInt32Array([a,mids[2],mids[0],b,mids[0],mids[1],c,mids[1],mids[2],mids[0],mids[2],mids[1]]))
+	var refined := faces.duplicate()
+	for level in 2:
+		var cache := {}
+		var next := PackedInt32Array()
+		for f in range(0,refined.size(),3):
+			var a := refined[f]
+			var b := refined[f+1]
+			var c := refined[f+2]
+			var mids: Array[int] = []
+			for edge in [Vector2i(a,b),Vector2i(b,c),Vector2i(c,a)]:
+				var key := Vector2i(mini(edge.x,edge.y),maxi(edge.x,edge.y))
+				if not cache.has(key):
+					cache[key]=points.size()+render_edges.size()
+					render_edges.append(Vector3(key.x,key.y,0.065/pow(2,level)))
+				mids.append(cache[key])
+			next.append_array(PackedInt32Array([a,mids[0],mids[2],b,mids[1],mids[0],c,mids[2],mids[1],mids[0],mids[1],mids[2]]))
+		refined=next
+	# Godot uses clockwise front faces; the simulation uses outward CCW faces.
+	for f in range(0,refined.size(),3):
+		render_indices.append_array(PackedInt32Array([refined[f],refined[f+2],refined[f+1]]))
 
 func create_visual(parent: Node3D) -> void:
 	mesh_instance = MeshInstance3D.new()
-	mesh_instance.material_override = SoftGeometry.material(COLORS[tier],0.31)
+	mesh_instance.material_override = SoftGeometry.cell_shell(COLORS[tier])
+	mesh_instance.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mesh_instance)
+	core_instance=MeshInstance3D.new()
+	core_instance.material_override=SoftGeometry.cell_core(COLORS[tier])
+	core_instance.scale=Vector3.ONE*0.76
+	mesh_instance.add_child(core_instance)
 	update_visual()
 
 func update_visual() -> void:
 	if not is_instance_valid(mesh_instance): return
 	var vertices := points.duplicate()
+	for i in vertices.size(): vertices[i]-=center
 	for e in render_edges:
-		var a := points[int(e.x)]
-		var b := points[int(e.y)]
+		var a := vertices[int(e.x)]
+		var b := vertices[int(e.y)]
 		var mid := (a+b)*0.5
 		# Curved interpolation of the cage, with only a small surface offset.
-		vertices.append(mid+(mid-center).normalized()*a.distance_to(b)*0.065)
+		vertices.append(mid+mid.normalized()*a.distance_to(b)*e.z)
 	var normals := PackedVector3Array()
 	normals.resize(vertices.size())
 	for f in range(0,render_indices.size(),3):
@@ -199,6 +212,10 @@ func update_visual() -> void:
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	mesh_instance.mesh = mesh
+	# A shared, centered mesh keeps both layers deformed and transparency sorted
+	# by each ball's actual location. The core is visual, not a rigid collider.
+	mesh_instance.position=center
+	core_instance.mesh=mesh
 
 func dispose() -> void:
 	alive = false

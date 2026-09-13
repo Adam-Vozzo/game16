@@ -13,6 +13,9 @@ var modal_blocker: Control
 var pause_controls: Control
 var options_controls: Control
 var end_controls: Control
+var reset_controls: Control
+var option_page := 0
+var option_tabs: Array[Button] = []
 var material_buttons: Array[Button] = []
 var sliders: Dictionary = {}
 var lab_button: Button
@@ -27,7 +30,13 @@ var slider_specs := [
 	{"key":"weight_scale","label":"Weight","hint":"Mass relative to elasticity.","min":0.25,"max":3.0,"step":0.05,"x":746,"y":282},
 	{"key":"gravity","label":"Gravity","hint":"The downward pull on every ball.","min":3.0,"max":18.0,"step":0.1,"x":746,"y":388},
 	{"key":"bowl_grip","label":"Bowl grip","hint":"Sliding resistance against the bowl.","min":0.0,"max":0.3,"step":0.005,"x":746,"y":494},
-	{"key":"rotation_speed","label":"Rotation speed","hint":"How quickly A / D orbits the bowl.","min":15.0,"max":150.0,"step":1.0,"x":374,"y":602}]
+	{"key":"rotation_speed","label":"Rotation speed","hint":"How quickly A / D orbits the bowl.","min":15.0,"max":150.0,"step":1.0,"x":374,"y":602,"page":1},
+	{"key":"min_elevation","label":"Minimum trajectory","hint":"Lowest angle available with S.","min":-35.0,"max":75.0,"step":1.0,"x":374,"y":282,"page":1},
+	{"key":"max_elevation","label":"Maximum trajectory","hint":"Highest angle available with W.","min":-30.0,"max":80.0,"step":1.0,"x":746,"y":282,"page":1},
+	{"key":"trajectory_speed","label":"Trajectory adjustment","hint":"How quickly W / S changes the angle.","min":5.0,"max":100.0,"step":1.0,"x":374,"y":388,"page":1},
+	{"key":"throw_speed","label":"Launch speed","hint":"Faster throws travel further.","min":2.0,"max":12.0,"step":0.1,"x":746,"y":388,"page":1},
+	{"key":"camera_height","label":"Camera height angle","hint":"Low side view to overhead view.","min":20.0,"max":70.0,"step":0.5,"x":374,"y":494,"page":1},
+	{"key":"camera_offset","label":"Camera side offset","hint":"Negative moves to the opposite side.","min":-65.0,"max":65.0,"step":1.0,"x":746,"y":494,"page":1}]
 
 func _ready() -> void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
@@ -42,21 +51,29 @@ func _ready() -> void:
 	pause_controls=_group(modal_blocker)
 	_button(pause_controls,"Resume",Rect2(558,359,324,54),func(): game.toggle_pause(),true,18)
 	_button(pause_controls,"Options",Rect2(558,428,324,48),func(): game.open_options(),false,16)
-	_button(pause_controls,"New bowl",Rect2(558,491,324,48),func(): game.restart(),false,16)
+	_button(pause_controls,"New bowl",Rect2(558,491,324,48),func(): game.request_new_bowl(),false,16)
 	_button(pause_controls,"Main menu",Rect2(558,554,324,48),func(): game.show_main_menu(),false,16)
 	end_controls=_group(modal_blocker)
-	_button(end_controls,"New bowl",Rect2(558,405,324,54),func(): game.restart(),true,18)
+	_button(end_controls,"New bowl",Rect2(558,405,324,54),func(): game.request_new_bowl(),true,18)
 	_button(end_controls,"Options",Rect2(558,474,324,48),func(): game.open_options(),false,16)
 	_button(end_controls,"Main menu",Rect2(558,537,324,48),func(): game.show_main_menu(),false,16)
+	reset_controls=_group(modal_blocker)
+	_button(reset_controls,"Cancel",Rect2(508,482,198,52),func(): game.cancel_new_bowl(),false,16)
+	_button(reset_controls,"Reset round",Rect2(734,482,198,52),func(): game.restart(),true,16)
 	options_controls=_group(modal_blocker)
 	_button(options_controls,"×",Rect2(1042,105,40,40),func(): game.close_options(),false,24)
+	for i in 2:
+		var page := i
+		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera"][i],Rect2(374+i*356,194,342,42),func(): option_page=page; sync_options(),false,16))
 	for i in 3:
 		var index := i
-		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,197,218,43),func(): game.set_material(index),false,16))
-	for spec in slider_specs: _slider(spec)
-	lab_button=_button(options_controls,"Collision lab",Rect2(746,590,326,44),func(): game.toggle_lab(); sync_options(),false,16)
+		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,254,218,43),func(): game.set_material(index),false,16))
+	for spec in slider_specs:
+		if spec.get("page",0)==0: spec.y+=48
+		_slider(spec)
+	lab_button=_button(options_controls,"Collision lab",Rect2(374,648,326,44),func(): game.toggle_lab(); sync_options(),false,16)
 	lab_button.tooltip_text="Disable merging and the spill limit."
-	slow_button=_button(options_controls,"Slow motion",Rect2(746,646,326,44),func(): game.slow_motion=not game.slow_motion; sync_options(),false,16)
+	slow_button=_button(options_controls,"Slow motion",Rect2(746,648,326,44),func(): game.slow_motion=not game.slow_motion; sync_options(),false,16)
 	slow_button.tooltip_text="Watch collisions at quarter speed."
 	_button(options_controls,"Reset defaults",Rect2(374,751,172,43),func(): game.reset_options(),false,14)
 	_button(options_controls,"Done",Rect2(909,751,163,43),func(): game.close_options(),true,16)
@@ -112,7 +129,8 @@ func _slider(spec: Dictionary) -> void:
 	slider.add_theme_stylebox_override("grabber_area_highlight",_style(ACCENT,ACCENT))
 	var key: String=spec.key
 	slider.value_changed.connect(func(value):
-		_option_owner(key).set(key,value)
+		if _option_owner(key)==game: game.set_play_option(key,value)
+		else: game.sim.set(key,value)
 		if key in ["stiffness","recovery","damping"]: game.material_index=-1
 		sync_options())
 	options_controls.add_child(slider)
@@ -122,24 +140,30 @@ func sync_screen() -> void:
 	if not is_instance_valid(menu_controls): return
 	menu_controls.visible=game.screen==game.Screen.MENU
 	play_controls.visible=game.screen==game.Screen.PLAY
-	modal_blocker.visible=game.screen in [game.Screen.PAUSE,game.Screen.OPTIONS,game.Screen.GAME_OVER]
+	modal_blocker.visible=game.screen in [game.Screen.PAUSE,game.Screen.OPTIONS,game.Screen.GAME_OVER,game.Screen.CONFIRM_RESET]
 	pause_controls.visible=game.screen==game.Screen.PAUSE
 	options_controls.visible=game.screen==game.Screen.OPTIONS
 	end_controls.visible=game.screen==game.Screen.GAME_OVER
+	reset_controls.visible=game.screen==game.Screen.CONFIRM_RESET
 	var focus := get_viewport().gui_get_focus_owner()
 	if is_instance_valid(focus): focus.release_focus()
 	sync_options()
 	queue_redraw()
 
 func _option_owner(key: String) -> Object:
-	return game if key=="rotation_speed" else game.sim
+	return game.sim if key in ["stiffness","recovery","damping","weight_scale","gravity","bowl_grip"] else game
 
 func sync_options() -> void:
 	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
+	for spec in slider_specs: sliders[spec.key].visible=spec.get("page",0)==option_page
+	for i in option_tabs.size(): option_tabs[i].modulate=ACCENT if i==option_page else Color.WHITE
 	for i in material_buttons.size():
+		material_buttons[i].visible=option_page==0
 		material_buttons[i].modulate=ACCENT if i==game.material_index else Color.WHITE
 		material_buttons[i].text=["Balloon","Foam","Dough"][i]+("   •" if i==game.material_index else "")
 	if is_instance_valid(lab_button):
+		lab_button.visible=option_page==0
+		slow_button.visible=option_page==0
 		lab_button.text="Collision lab     "+("ON" if game.lab_mode else "OFF")
 		lab_button.modulate=ACCENT if game.lab_mode else Color.WHITE
 		slow_button.text="Slow motion     "+("0.25×" if game.slow_motion else "1×")
@@ -185,6 +209,11 @@ func _draw() -> void:
 		draw_rect(Rect2(0,0,1440,900),Color(0.018,0.035,0.045,0.77))
 		match game.screen:
 			game.Screen.OPTIONS: _draw_options()
+			game.Screen.CONFIRM_RESET:
+				panel(Rect2(460,290,520,292),PANEL,24)
+				centered("Start a new bowl?",Vector2(720,354),32)
+				centered("This will reset the current round.",Vector2(720,400),17)
+				centered("Your score and all balls will be cleared.",Vector2(720,430),14,MUTED)
 			game.Screen.PAUSE:
 				panel(Rect2(504,230,432,424),PANEL,24)
 				centered("Paused",Vector2(720,298),36)
@@ -210,8 +239,7 @@ func _draw_game() -> void:
 		var y := 742.0-i*75.0
 		var radius := 11.0+i*2.0
 		draw_circle(Vector2(82,y),radius+5,Color("20343a"))
-		draw_circle(Vector2(82,y),radius,SoftBall.COLORS[i])
-		draw_circle(Vector2(78,y-5),radius*0.24,Color(1,1,1,0.17))
+		_cell_icon(Vector2(82,y),radius,SoftBall.COLORS[i])
 		if i<7:
 			draw_line(Vector2(78,y-35),Vector2(82,y-39),MUTED,1)
 			draw_line(Vector2(82,y-39),Vector2(86,y-35),MUTED,1)
@@ -219,7 +247,7 @@ func _draw_game() -> void:
 	for i in 3:
 		var y := 345.0+i*66
 		draw_circle(Vector2(1346,y),24,Color("20343a"))
-		draw_circle(Vector2(1346,y),18-i*2,SoftBall.COLORS[game.queue[i]])
+		_cell_icon(Vector2(1346,y),20-i*2,SoftBall.COLORS[game.queue[i]])
 	centered("A / D  rotate     W / S  trajectory     Space / Click  toss     Scroll  zoom     Esc  pause",Vector2(720,855),13,MUTED)
 	if notice_time>0: centered(notice,Vector2(720,817),14,ACCENT)
 	for popup in score_popups:
@@ -235,18 +263,28 @@ func _draw_game() -> void:
 		color.a=alpha
 		text_at(text,origin,size_px,color)
 
+func _cell_icon(at: Vector2,radius: float,color: Color) -> void:
+	draw_circle(at,radius,Color(color.r,color.g,color.b,0.13))
+	draw_arc(at,radius,0,TAU,40,Color(0.85,0.96,0.91,0.55),1.0,true)
+	draw_circle(at,radius*0.73,color)
+	draw_circle(at+Vector2(-0.22,-0.27)*radius,radius*0.16,Color(1,1,1,0.22))
+
 func _draw_options() -> void:
 	panel(Rect2(326,80,788,749),PANEL,24)
 	text_at("Options",Vector2(374,141),36)
 	text_at("Shape the way things feel.",Vector2(376,172),15,MUTED)
 	for spec in slider_specs:
+		if spec.get("page",0)!=option_page: continue
 		text_at(spec.label,Vector2(spec.x,spec.y),16)
 		var value: float=_option_owner(spec.key).get(spec.key)
 		var display: String
 		match spec.key:
 			"weight_scale": display="%.2f×" % value
 			"gravity": display="%.1f m/s²" % value
-			"rotation_speed": display="%.0f°/s" % value
+			"rotation_speed","trajectory_speed": display="%.0f°/s" % value
+			"min_elevation","max_elevation","camera_offset": display="%.0f°" % value
+			"camera_height": display="%.1f°" % value
+			"throw_speed": display="%.1f m/s" % value
 			_: display="%.1f%%" % (value*100)
 		var width := font.get_string_size(display,HORIZONTAL_ALIGNMENT_LEFT,-1,13).x
 		text_at(display,Vector2(spec.x+322-width,spec.y),13,ACCENT)

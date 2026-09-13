@@ -42,6 +42,18 @@ static func material(color: Color, roughness: float = 0.38) -> StandardMaterial3
 	mat.roughness = roughness
 	return mat
 
+static func cell_shell(color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader=preload("res://shaders/cell_shell.gdshader")
+	mat.set_shader_parameter("tint",color)
+	return mat
+
+static func cell_core(color: Color) -> ShaderMaterial:
+	var mat := ShaderMaterial.new()
+	mat.shader=preload("res://shaders/cell_core.gdshader")
+	mat.set_shader_parameter("tint",color)
+	return mat
+
 static func bowl_mesh() -> ArrayMesh:
 	var st := SurfaceTool.new()
 	st.begin(Mesh.PRIMITIVE_TRIANGLES)

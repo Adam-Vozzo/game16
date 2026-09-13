@@ -1,14 +1,14 @@
 extends Node3D
 
-enum Screen { MENU, PLAY, PAUSE, OPTIONS, GAME_OVER }
+enum Screen { MENU, PLAY, PAUSE, OPTIONS, GAME_OVER, CONFIRM_RESET }
 const MATERIALS := [[0.22,0.008,0.045],[0.30,0.003,0.12],[0.10,0.004,0.085]]
 const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
 const THROW_SPEED := 6.4
-const CAMERA_SIDE_ANGLE := PI/9.0
 const DEFAULT_ROTATION_SPEED := 52.0
 var screen := Screen.MENU
 var options_return := Screen.MENU
+var reset_return := Screen.PAUSE
 var sim := SoftSimulation.new()
 var camera: Camera3D
 var hud: Control
@@ -23,12 +23,19 @@ var slow_motion := false
 var material_index := 2
 var angle := 0.22
 var rotation_speed := DEFAULT_ROTATION_SPEED
+var min_elevation := MIN_ELEVATION
+var max_elevation := MAX_ELEVATION
+var trajectory_speed := 32.0
+var throw_speed := THROW_SPEED
+var camera_height := 37.5
+var camera_offset := 20.0
 var zoom := 11.8
 var target := Vector3(0,0.65,0)
 var launch := Vector3.ZERO
 var throw_elevation := 24.0
 var cooldown := 0.0
 var held: MeshInstance3D
+var held_core: MeshInstance3D
 var target_ring: MeshInstance3D
 var trajectory: Array[MeshInstance3D] = []
 var effects: Array[Dictionary] = []
@@ -67,6 +74,12 @@ func _ready() -> void:
 		rng.seed=16
 		restart()
 	if "--options" in OS.get_cmdline_user_args(): open_options()
+	if "--throw-options" in OS.get_cmdline_user_args():
+		hud.option_page=1
+		open_options()
+	if "--confirm-reset" in OS.get_cmdline_user_args():
+		set_screen(Screen.PAUSE)
+		request_new_bowl()
 
 func _build_stage() -> void:
 	var environment := WorldEnvironment.new()
@@ -133,6 +146,10 @@ func _build_stage() -> void:
 	add_child(foot_ring)
 	held = MeshInstance3D.new()
 	add_child(held)
+	held.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	held_core=MeshInstance3D.new()
+	held_core.scale=Vector3.ONE*0.76
+	held.add_child(held_core)
 	target_ring = _ring(0.27,0.015,Color("d3ecd0"))
 	add_child(target_ring)
 	for i in 22:
@@ -177,11 +194,18 @@ func close_options() -> void:
 func show_main_menu() -> void:
 	set_screen(Screen.MENU)
 
+func request_new_bowl() -> void:
+	reset_return=screen
+	set_screen(Screen.CONFIRM_RESET)
+
+func cancel_new_bowl() -> void:
+	set_screen(reset_return)
+
 func restart() -> void:
 	sim.clear()
 	score=0
 	game_over=false
-	throw_elevation=24.0
+	throw_elevation=clampf(24.0,min_elevation,max_elevation)
 	simulation_accumulator=0
 	cooldown=0.3
 	sim.spill_enabled=not lab_mode
@@ -202,13 +226,16 @@ func _update_held() -> void:
 	sphere.radial_segments=32
 	sphere.rings=16
 	held.mesh=sphere
-	held.material_override=SoftGeometry.material(SoftBall.COLORS[queue[0]],0.31)
+	held.material_override=SoftGeometry.cell_shell(SoftBall.COLORS[queue[0]])
+	held_core.mesh=sphere
+	held_core.material_override=SoftGeometry.cell_core(SoftBall.COLORS[queue[0]])
 
 func _update_camera() -> void:
 	var menu_backdrop := screen==Screen.MENU or (screen==Screen.OPTIONS and options_return==Screen.MENU)
 	# View the throw from slightly beside it so the arc reads in profile.
-	var camera_angle := angle+(0.0 if menu_backdrop else CAMERA_SIDE_ANGLE)
-	camera.position=Vector3(sin(camera_angle)*15,12,cos(camera_angle)*15)
+	var camera_angle := angle+deg_to_rad(camera_offset)
+	var elevation := deg_to_rad(camera_height)
+	camera.position=Vector3(0,0.5,0)+Vector3(sin(camera_angle)*cos(elevation),sin(elevation),cos(camera_angle)*cos(elevation))*18.9
 	camera.look_at(Vector3(0,0.5,0))
 	camera.position+=camera.basis.x*(-3.55 if menu_backdrop else 0.0)
 	camera.size=13.5 if menu_backdrop else zoom
@@ -237,11 +264,19 @@ func _unhandled_input(event: InputEvent) -> void:
 	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_SPACE: toss()
 
 func adjust_elevation(amount: float) -> void:
-	throw_elevation=clampf(throw_elevation+amount,MIN_ELEVATION,MAX_ELEVATION)
+	throw_elevation=clampf(throw_elevation+amount,min_elevation,max_elevation)
+
+func set_play_option(key: String,value: float) -> void:
+	match key:
+		"min_elevation": min_elevation=clampf(value,-35.0,max_elevation-5.0)
+		"max_elevation": max_elevation=clampf(value,min_elevation+5.0,80.0)
+		_: set(key,value)
+	adjust_elevation(0)
+	_update_camera()
 
 func _launch_velocity() -> Vector3:
 	var pitch := deg_to_rad(throw_elevation)
-	return Vector3(-sin(angle),0,-cos(angle))*cos(pitch)*THROW_SPEED+Vector3.UP*sin(pitch)*THROW_SPEED
+	return Vector3(-sin(angle),0,-cos(angle))*cos(pitch)*throw_speed+Vector3.UP*sin(pitch)*throw_speed
 
 func _landing_time(velocity: Vector3) -> float:
 	# Intersect the ballistic center path with the bowl profile plus ball radius.
@@ -268,6 +303,7 @@ func toggle_pause() -> void:
 		Screen.PLAY: set_screen(Screen.PAUSE)
 		Screen.PAUSE: set_screen(Screen.PLAY)
 		Screen.OPTIONS: close_options()
+		Screen.CONFIRM_RESET: cancel_new_bowl()
 
 func toggle_lab() -> void:
 	lab_mode=not lab_mode
@@ -288,6 +324,14 @@ func set_material(index: int) -> void:
 
 func reset_options() -> void:
 	rotation_speed=DEFAULT_ROTATION_SPEED
+	min_elevation=MIN_ELEVATION
+	max_elevation=MAX_ELEVATION
+	trajectory_speed=32.0
+	throw_speed=THROW_SPEED
+	camera_height=37.5
+	camera_offset=20.0
+	adjust_elevation(0)
+	_update_camera()
 	sim.weight_scale=1.0
 	sim.gravity=9.8
 	sim.bowl_grip=0.065
@@ -308,11 +352,11 @@ func _process(delta: float) -> void:
 		cooldown=maxf(0,cooldown-delta)
 		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*deg_to_rad(rotation_speed))
 		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*deg_to_rad(rotation_speed))
-		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*32)
-		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): adjust_elevation(-delta*32)
+		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*trajectory_speed)
+		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): adjust_elevation(-delta*trajectory_speed)
 	for ball in sim.balls: ball.update_visual()
 	held.position=launch
-	var show_aim := screen==Screen.PLAY or screen==Screen.PAUSE or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
+	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
 	held.visible=show_aim and not game_over and cooldown<=0
 	var velocity := _launch_velocity()
 	var flight := _landing_time(velocity)
@@ -338,7 +382,7 @@ func _process(delta: float) -> void:
 		if demo_timer>1.0:
 			demo_timer=0
 			orbit(rng.randf_range(-0.5,0.5))
-			throw_elevation=rng.randf_range(5,48)
+			throw_elevation=clampf(rng.randf_range(5,48),min_elevation,max_elevation)
 			toss()
 	if screenshot_frame>0 and frame==screenshot_frame:
 		_capture.call_deferred()
