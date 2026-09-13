@@ -217,17 +217,18 @@ func _test_throw_preview() -> void:
 	var game = load("res://scenes/main.tscn").instantiate()
 	root.add_child(game)
 	game.restart()
+	game.sim.clear()
 	var valid := true
 	for speed in [2.0,6.4,12.0]:
 		game.throw_speed=speed
 		for pitch in [-35.0,24.0,80.0]:
 			game.throw_elevation=pitch
 			var velocity: Vector3=game._launch_velocity()
-			var flight: float=game._landing_time(velocity)
-			var end: Vector3=game.launch+velocity*flight+Vector3.DOWN*game.sim.gravity*flight*flight*0.5
-			var surface: float=0.075*(end.x*end.x+end.z*end.z)+SoftBall.RADII[game.queue[0]]
-			if not end.is_finite() or absf(end.y-surface)>0.001: valid=false
-	check(valid,"Preview meets the bowl profile across the launch-speed and trajectory ranges")
+			var preview := AimPreview.trace(game.sim,game.launch,velocity,SoftBall.RADII[game.queue[0]])
+			var end: Vector3=preview.point
+			var surface: float=0.075*(end.x*end.x+end.z*end.z) if Vector2(end.x,end.z).length()<4.23 else game.sim.floor_height
+			if not preview.hit or not end.is_finite() or absf(end.y-surface)>0.001: valid=false
+	check(valid,"Preview finds finite surface contacts across the launch-speed and trajectory ranges")
 	game.throw_elevation=24.0
 	var velocity: Vector3=game._launch_velocity()
 	valid=true

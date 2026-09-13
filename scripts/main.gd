@@ -38,6 +38,8 @@ var held: MeshInstance3D
 var held_core: MeshInstance3D
 var aim_visible := false
 var landing_marker := Vector3.ZERO
+var landing_normal := Vector3.UP
+var aim_hit := false
 var trajectory := PackedVector3Array()
 var sound: AudioStreamPlayer
 var screenshot_frame := -1
@@ -266,15 +268,6 @@ func _launch_velocity() -> Vector3:
 	var pitch := deg_to_rad(throw_elevation)
 	return Vector3(-sin(angle),0,-cos(angle))*cos(pitch)*throw_speed+Vector3.UP*sin(pitch)*throw_speed
 
-func _landing_time(velocity: Vector3) -> float:
-	# Intersect the ballistic center path with the bowl profile plus ball radius.
-	var origin_xz := Vector2(launch.x,launch.z)
-	var speed_xz := Vector2(velocity.x,velocity.z)
-	var a := -sim.gravity*0.5-0.075*speed_xz.length_squared()
-	var b := velocity.y-0.15*origin_xz.dot(speed_xz)
-	var c := launch.y-0.075*origin_xz.length_squared()-SoftBall.RADII[queue[0]]
-	return maxf(0.05,(-b-sqrt(maxf(0,b*b-4*a*c)))/(2*a))
-
 func toss() -> void:
 	if paused or game_over or cooldown>0: return
 	if sim.balls.size() >= SoftSimulation.MAX_BALLS:
@@ -347,13 +340,7 @@ func _process(delta: float) -> void:
 	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
 	held.visible=show_aim and not game_over and cooldown<=0
 	aim_visible=show_aim and not game_over
-	var velocity := _launch_velocity()
-	var flight := _landing_time(velocity)
-	for i in trajectory.size():
-		var t := flight*(i+1)/float(trajectory.size())
-		trajectory[i]=launch+velocity*t+Vector3.DOWN*sim.gravity*t*t*0.5
-	target=launch+velocity*flight+Vector3.DOWN*sim.gravity*flight*flight*0.5
-	landing_marker=Vector3(target.x,0.075*(target.x*target.x+target.z*target.z)+0.04,target.z)
+	if aim_visible: _update_aim()
 	if demo and not paused and not game_over:
 		demo_timer+=delta
 		if demo_timer>1.0:
@@ -363,6 +350,19 @@ func _process(delta: float) -> void:
 			toss()
 	if screenshot_frame>0 and frame==screenshot_frame:
 		_capture.call_deferred()
+
+func _update_aim() -> void:
+	var result := AimPreview.trace(sim,launch,_launch_velocity(),SoftBall.RADII[queue[0]])
+	var path: PackedVector3Array=result.path
+	# Even spacing along the sampled flight, stopping at the first shell contact.
+	for i in trajectory.size():
+		var sample := (path.size()-1)*(i+1)/float(trajectory.size())
+		var index := mini(int(sample),path.size()-2)
+		trajectory[i]=path[index].lerp(path[index+1],sample-index)
+	target=result.center
+	landing_marker=result.point
+	landing_normal=result.normal
+	aim_hit=result.hit
 
 func _on_merge(at: Vector3,tier: int,points_awarded: int) -> void:
 	score+=points_awarded

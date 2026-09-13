@@ -7,6 +7,7 @@ $projectPath = Split-Path -Parent $PSScriptRoot
 $buildPath = Join-Path $projectPath 'build\web'
 $publishPath = Join-Path $projectPath 'docs'
 New-Item -ItemType Directory -Path $buildPath -Force | Out-Null
+New-Item -ItemType File -Path (Join-Path $projectPath 'build\.gdignore') -Force | Out-Null
 
 # Wait explicitly: some Windows GUI Godot executables otherwise return early.
 $arguments = @('--headless', '--path', ('"' + $projectPath + '"'), '--export-release', 'Web', ('"' + (Join-Path $buildPath 'index.html') + '"'))

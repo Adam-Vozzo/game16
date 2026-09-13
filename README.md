@@ -22,7 +22,7 @@ Open `project.godot` in **Godot 4.6+** and press **F5**. The regular Godot build
 
 A local standalone Windows build is available at `build/SoftMountain.exe` after exporting the **Windows Desktop** preset. Builds are excluded from source control. The prototype was developed and tested with Godot 4.6.1; the local executable is exported with the installed Godot 4.7.2 templates.
 
-The main menu offers **Play** and **Options**. Play starts a bowl with three different tiers. Rotate around the bowl with A/D, raise or lower the throw angle with W/S, then click or press Space to toss immediately. Mouse position and hold duration do not affect the throw. The camera views the throw from a slight side angle to keep its arc readable as you orbit. The outlined dotted arc stays readable over light surfaces and overlapping cells, with a matching landing marker. It previews the ballistic center path to the bowl plus the queued ball's radius; it does not predict collisions with the pile. Same-tier contact creates the next larger tier and awards points, which float up from the merge and fade away alongside a burst of yellow stars with pink and purple trails. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
+The main menu offers **Play** and **Options**. Play starts a bowl with three different tiers. Rotate around the bowl with A/D, raise or lower the throw angle with W/S, then click or press Space to toss immediately. Mouse position and hold duration do not affect the throw. The camera views the throw from a slight side angle to keep its arc readable as you orbit. The outlined dotted arc stops at the first predicted contact with the current pile or bowl. It uses the thrown ball's shell size, the deformed target cages, and the solver's airborne timestep. A short lead-in connects the center path to a marker on the contact surface. Balls hide the parts of the guide behind them, and crowded dots share one outside outline. This is a snapshot estimate: it does not simulate the pile's future movement, post-impact deformation, or bounces. Same-tier contact creates the next larger tier and awards points, which float up from the merge and fade away alongside a burst of yellow stars with pink and purple trails. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
 
 | Input | Action |
 | --- | --- |
@@ -63,6 +63,7 @@ The rendered surface subdivides the cage into 642 vertices and 1,280 smooth-shad
 - `scripts/soft_geometry.gd` — procedural cage and bowl.
 - `scripts/main.gd` — input, throws, camera, lighting, effects and sound.
 - `scripts/hud.gd` — interface and live tuning.
+- `scripts/aim_preview.gd` — first-contact prediction and deformed-shell occlusion.
 - `shaders/cell_shell.gdshader` and `cell_core.gdshader` — transparent membrane and solid core materials.
 - `tests/physics_tests.gd` — deterministic simulation regressions.
 - `tests/merge_tests.gd` — merge stability regressions.
@@ -77,6 +78,7 @@ godot --headless --path . --editor --import --quit
 godot --headless --path . --script res://tests/physics_tests.gd
 godot --headless --path . --script res://tests/merge_tests.gd
 godot --headless --path . --script res://tests/ui_tests.gd
+godot --headless --path . --script res://tests/aim_tests.gd
 ```
 
 Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world. Merge regressions cover grounded merges across all presets, crowded contacts, inherited airborne movement, and expiry of the settling guard.

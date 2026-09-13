@@ -321,23 +321,47 @@ func _draw_aim() -> void:
 	if not game.aim_visible: return
 	var outline := Color("152b32")
 	var fill := Color("fff2ca")
-	# Project the real ballistic path, but keep its contrast and pixel size
-	# independent of lighting, zoom, and transparent shells in front of it.
+	var points := PackedVector2Array()
+	var radii := PackedFloat32Array()
+	var indices := PackedInt32Array()
+	var view: Vector3=game.camera.basis.z
 	for i in game.trajectory.size():
 		var world: Vector3=game.trajectory[i]
-		if game.camera.is_position_behind(world): continue
-		var at: Vector2=game.camera.unproject_position(world)
-		var radius := 2.8 if i%3==0 else 2.0
-		draw_circle(at,radius+1.4,outline,true,-1,true)
-		draw_circle(at,radius,fill,true,-1,true)
-	var ring := PackedVector2Array()
+		if game.camera.is_position_behind(world) or AimPreview.occluded(world,view,game.sim.balls): continue
+		points.append(game.camera.unproject_position(world))
+		radii.append(2.8 if i%3==0 else 2.0)
+		indices.append(i)
+	# A short lead-in joins the ball-center path to the actual surface contact.
+	var contact: Vector3=game.landing_marker+game.landing_normal*0.045
+	if game.aim_hit and not game.camera.is_position_behind(contact) and not AimPreview.occluded(contact,view,game.sim.balls):
+		points.append(game.camera.unproject_position(contact))
+		radii.append(1.3)
+		indices.append(game.trajectory.size())
+	# Draw the complete silhouette first, then all fills. Dense clusters become
+	# one outlined shape; adjacent dots never paint dark rings over one another.
+	for pass_index in 2:
+		var border := 1.4 if pass_index==0 else 0.0
+		var color := outline if pass_index==0 else fill
+		for i in points.size():
+			if i>0 and indices[i]==indices[i-1]+1 and (indices[i]==game.trajectory.size() or points[i].distance_to(points[i-1])<radii[i]+radii[i-1]+1.0):
+				draw_line(points[i-1],points[i],color,(minf(radii[i],radii[i-1])+border)*2.0,true)
+			draw_circle(points[i],radii[i]+border,color,true,-1,true)
+	if not game.aim_hit: return
+	# The marker lies on the hit surface, rather than on the floor behind the pile.
+	var normal: Vector3=game.landing_normal
+	var axis := normal.cross(Vector3.RIGHT if absf(normal.x)<0.9 else Vector3.FORWARD).normalized()
+	var other := normal.cross(axis).normalized()
+	var ring := PackedVector3Array()
+	var visible: Array[bool]=[]
 	for i in 49:
 		var theta := TAU*i/48.0
-		var world: Vector3=game.landing_marker+Vector3(cos(theta),0,sin(theta))*0.27
-		if game.camera.is_position_behind(world): return
-		ring.append(game.camera.unproject_position(world))
-	draw_polyline(ring,outline,5.0,true)
-	draw_polyline(ring,fill,2.0,true)
+		var world: Vector3=game.landing_marker+normal*0.045+(axis*cos(theta)+other*sin(theta))*0.16
+		ring.append(world)
+		visible.append(not game.camera.is_position_behind(world) and not AimPreview.occluded(world,view,game.sim.balls))
+	for pass_index in 2:
+		for i in 48:
+			if visible[i] and visible[i+1]:
+				draw_line(game.camera.unproject_position(ring[i]),game.camera.unproject_position(ring[i+1]),outline if pass_index==0 else fill,4.5 if pass_index==0 else 1.8,true)
 
 func _cell_icon(at: Vector2,radius: float,color: Color) -> void:
 	draw_circle(at,radius,Color(color.r,color.g,color.b,0.13))
