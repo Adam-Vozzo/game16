@@ -6,7 +6,7 @@ const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
 const THROW_SPEED := 6.4
 const DEFAULT_ROTATION_SPEED := 52.0
-const PERFORMANCE_DEFAULTS := {"ball_detail":2,"visual_rate":60,"shadows_enabled":true,"antialiasing":2,"merge_effects":2,"show_fps":false}
+const PERFORMANCE_DEFAULTS := {"ball_detail":2,"visual_rate":60,"shadows_enabled":true,"antialiasing":2,"merge_effects":2,"show_fps":false,"lighting_quality":2,"bloom_enabled":true,"sss_enabled":true}
 var screen := Screen.MENU
 var options_return := Screen.MENU
 var reset_return := Screen.PAUSE
@@ -28,6 +28,12 @@ var shadows_enabled := true
 var antialiasing := 2
 var merge_effects := 2
 var show_fps := false
+var desktop_effects := false
+var lighting_quality := 2
+var bloom_enabled := true
+var sss_enabled := true
+var tidal: TidalLighting
+var environment_settings: Environment
 var key_light: DirectionalLight3D
 var visual_elapsed := 0.0
 var visual_dirty := true
@@ -61,8 +67,15 @@ var simulation_accumulator := 0.0
 var capture_name := "prototype"
 
 func _ready() -> void:
+	desktop_effects=RenderingServer.get_current_rendering_method()=="forward_plus"
+	lighting_quality=2 if desktop_effects else 1
+	bloom_enabled=desktop_effects
+	sss_enabled=desktop_effects
 	rng.randomize()
 	_build_stage()
+	tidal=TidalLighting.new()
+	tidal.game=self
+	add_child(tidal)
 	sim.visual_parent = self
 	sim.merged.connect(_on_merge)
 	sim.spilled.connect(func(): game_over=true; set_screen(Screen.GAME_OVER))
@@ -109,14 +122,20 @@ func _build_stage() -> void:
 	var environment := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
-	env.background_color = Color("0e1b23")
+	env.background_color = Color("050b1b")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
-	env.ambient_light_color = Color("b8d8df")
-	env.ambient_light_energy = 0.28*light_scale
+	env.ambient_light_color = Color("7399d0")
+	env.ambient_light_energy = 0.38*light_scale
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.ssao_enabled = true
 	env.ssao_radius = 1.0
 	env.ssao_intensity = 1.5
+	env.glow_enabled=bloom_enabled
+	env.glow_intensity=0.65
+	env.glow_bloom=0.08
+	env.glow_hdr_threshold=0.85
+	environment_settings=env
+	RenderingServer.global_shader_parameter_set("tidal_scattering",0.55 if sss_enabled else 0.0)
 	environment.environment = env
 	add_child(environment)
 	camera = Camera3D.new()
@@ -128,8 +147,8 @@ func _build_stage() -> void:
 	var light := DirectionalLight3D.new()
 	key_light=light
 	light.rotation_degrees = Vector3(-53,-30,0)
-	light.light_color = Color("fff3dc")
-	light.light_energy = 0.65*light_scale
+	light.light_color = Color("a9cfff")
+	light.light_energy = 0.52*light_scale
 	light.shadow_enabled = true
 	light.shadow_opacity = 0.8 if compatibility else 1.0
 	light.light_angular_distance = 1.5
@@ -137,8 +156,8 @@ func _build_stage() -> void:
 	add_child(light)
 	var fill := OmniLight3D.new()
 	fill.position = Vector3(-5,6,-3)
-	fill.light_color = Color("96c9d5")
-	fill.light_energy = 0.45*light_scale
+	fill.light_color = Color("b698ec")
+	fill.light_energy = 0.65*light_scale
 	fill.omni_range = 15
 	add_child(fill)
 	var ground := MeshInstance3D.new()
@@ -146,7 +165,7 @@ func _build_stage() -> void:
 	plane.size = Vector2(200,200)
 	ground.mesh = plane
 	ground.position.y = -0.72
-	ground.material_override = SoftGeometry.material(Color("213133") if compatibility else Color("132730"),0.86)
+	ground.material_override = SoftGeometry.material(Color("0b1529"),0.82)
 	add_child(ground)
 	var pedestal := MeshInstance3D.new()
 	var cylinder := CylinderMesh.new()
@@ -156,25 +175,26 @@ func _build_stage() -> void:
 	cylinder.radial_segments = 96
 	pedestal.mesh = cylinder
 	pedestal.position.y = -0.48
-	pedestal.material_override = SoftGeometry.material(Color("243d45"),0.65)
+	pedestal.material_override = SoftGeometry.material(Color("16233c"),0.58)
 	add_child(pedestal)
 	var bowl := MeshInstance3D.new()
 	bowl.mesh = SoftGeometry.bowl_mesh()
-	var mat := SoftGeometry.material(Color("9cbbba"),0.29)
-	mat.cull_mode = BaseMaterial3D.CULL_DISABLED
+	var mat := ShaderMaterial.new()
+	mat.shader=preload("res://shaders/tidal_bowl.gdshader")
 	bowl.material_override = mat
 	add_child(bowl)
-	var rim := _ring(4.2,0.035,Color("c4d7cf"))
+	var rim := _ring(4.2,0.035,Color("597f99"))
 	rim.position.y = 1.323
 	add_child(rim)
-	var foot_ring := _ring(2.95,0.012,Color("547777"))
+	var foot_ring := _ring(2.95,0.012,Color("36486d"))
 	foot_ring.position.y = -0.69
 	add_child(foot_ring)
+	TidalStage.decorate(self)
 	held = MeshInstance3D.new()
 	add_child(held)
 	held.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	held_core=MeshInstance3D.new()
-	held_core.scale=Vector3.ONE*0.76
+	held_core.scale=Vector3.ONE*SoftBall.CORE_SCALE
 	held.add_child(held_core)
 	trajectory.resize(22)
 
@@ -220,6 +240,7 @@ func cancel_new_bowl() -> void:
 	set_screen(reset_return)
 
 func restart() -> void:
+	if is_instance_valid(tidal): tidal.clear()
 	sim.clear()
 	score=0
 	game_over=false
@@ -330,7 +351,10 @@ func set_material(index: int) -> void:
 	hud.sync_options()
 
 func reset_options() -> void:
-	for setting in PERFORMANCE_DEFAULTS: set_performance_option(setting,PERFORMANCE_DEFAULTS[setting])
+	for setting in PERFORMANCE_DEFAULTS:
+		var value: Variant=PERFORMANCE_DEFAULTS[setting]
+		if not desktop_effects and setting=="lighting_quality": value=1
+		set_performance_option(setting,value)
 
 func reset_dev_tweaks() -> void:
 	smart_trajectory=false
@@ -352,6 +376,13 @@ func reset_dev_tweaks() -> void:
 
 func set_performance_option(key: String,value: Variant) -> void:
 	match key:
+		"lighting_quality": lighting_quality=clampi(int(value),0,2)
+		"bloom_enabled":
+			bloom_enabled=bool(value) and desktop_effects
+			environment_settings.glow_enabled=bloom_enabled
+		"sss_enabled":
+			sss_enabled=bool(value) and desktop_effects
+			RenderingServer.global_shader_parameter_set("tidal_scattering",0.55 if sss_enabled else 0.0)
 		"ball_detail":
 			ball_detail=clampi(int(value),0,2)
 			sim.render_detail=ball_detail
@@ -378,6 +409,7 @@ func _physics_process(delta: float) -> void:
 			simulation_accumulator-=1.0/60.0
 
 func _process(delta: float) -> void:
+	tidal.update(delta)
 	frame+=1
 	if not paused:
 		cooldown=maxf(0,cooldown-delta)
@@ -424,6 +456,7 @@ func _on_merge(at: Vector3,tier: int,points_awarded: int) -> void:
 	score+=points_awarded
 	hud.show_score(at,points_awarded,SoftBall.COLORS[tier])
 	hud.show_merge_stars(at,tier)
+	tidal.burst(at,tier)
 	_tone(330*pow(1.18,tier),0.18)
 
 func _tone(frequency: float,duration: float) -> void:

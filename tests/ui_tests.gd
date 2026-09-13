@@ -33,7 +33,7 @@ func run() -> void:
 	check(game.sim.balls.size()==count,"Main menu cannot throw into its backdrop")
 	game.open_options()
 	check(game.screen==game.Screen.OPTIONS and game.hud.modal_blocker.visible,"Main menu opens shared options modal")
-	check(game.hud.performance_buttons.ball_detail.visible and not game.hud.option_tabs[0].visible and not game.hud.sliders.throw_speed.visible,"Options contains performance controls without development tabs")
+	check(game.hud.performance_buttons.ball_detail.visible and game.hud.option_tabs[0].text=="Performance" and not game.hud.sliders.throw_speed.visible,"Options contains performance controls without development tabs")
 	game.close_options()
 	check(game.screen==game.Screen.MENU,"Options returns to the main menu")
 	game.open_dev_tweaks()
@@ -225,7 +225,7 @@ func run() -> void:
 	ball.points[0]+=Vector3(0.04,-0.08,0.03)
 	ball.update_center()
 	ball.update_visual()
-	check(ball.core_instance.mesh==ball.mesh_instance.mesh and ball.core_instance.scale==Vector3.ONE*0.76 and ball.mesh_instance.position==ball.center,"Cell layers share the deformed mesh and remain centered together")
+	check(ball.core_instance.mesh==ball.mesh_instance.mesh and ball.core_instance.scale==Vector3.ONE*SoftBall.CORE_SCALE and ball.mesh_instance.position==ball.center,"Cell layers share the deformed mesh and remain centered together")
 	game.game_over=true
 	game.set_screen(game.Screen.GAME_OVER)
 	game.hud.end_controls.get_child(0).pressed.emit()

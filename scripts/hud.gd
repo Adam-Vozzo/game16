@@ -3,8 +3,8 @@ extends Control
 
 const INK := Color("edf2ec")
 const MUTED := Color("8da5a6")
-const ACCENT := Color("b8e6bd")
-const PANEL := Color("15282f")
+const ACCENT := Color("a5daed")
+const PANEL := Color("111f35")
 var game: Node3D
 var font: Font = ThemeDB.fallback_font
 var menu_controls: Control
@@ -31,7 +31,10 @@ var performance_specs := [
 	{"key":"shadows_enabled","label":"Shadows","choices":["Off","On"],"values":[false,true],"hint":"Turn off cast shadows to ease GPU load.","x":374,"y":410},
 	{"key":"antialiasing","label":"Edge smoothing","choices":["Off","2×","4×"],"values":[0,1,2],"hint":"Lower settings reduce GPU work.","x":746,"y":410},
 	{"key":"merge_effects","label":"Merge effects","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Fewer stars and simpler trails.","x":374,"y":538},
-	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":538}]
+	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":538},
+	{"key":"lighting_quality","label":"Living lights","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Cells and merges illuminate their surroundings.","x":374,"y":282,"page":3},
+	{"key":"sss_enabled","label":"Subsurface scattering","choices":["Off","On"],"values":[false,true],"hint":"Soft light diffusion through the inner tissue.","x":746,"y":282,"page":3,"desktop":true},
+	{"key":"bloom_enabled","label":"Bloom","choices":["Off","On"],"values":[false,true],"hint":"A gentle halo around luminous filaments.","x":374,"y":410,"page":3,"desktop":true}]
 var score_popups: Array[Dictionary] = []
 var merge_stars: Array[Dictionary] = []
 var notice := ""
@@ -90,7 +93,10 @@ func _ready() -> void:
 	_button(options_controls,"×",Rect2(1042,105,40,40),func(): game.close_options(),false,24)
 	for i in 2:
 		var page := i
-		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera"][i],Rect2(374+i*356,194,342,42),func(): dev_page=page; option_page=page; sync_options(),false,16))
+		option_tabs.append(_button(options_controls,"",Rect2(374+i*356,194,342,42),func():
+			if game.screen==game.Screen.DEV_TWEAKS: dev_page=page; option_page=page
+			else: option_page=page+2
+			sync_options(),false,16))
 	for i in 3:
 		var index := i
 		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,254,218,43),func(): game.set_material(index),false,16))
@@ -194,8 +200,10 @@ func sync_options() -> void:
 	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
 	for spec in slider_specs: sliders[spec.key].visible=spec.get("page",0)==option_page
 	for i in option_tabs.size():
-		option_tabs[i].visible=game.screen==game.Screen.DEV_TWEAKS
-		option_tabs[i].modulate=ACCENT if i==option_page else Color.WHITE
+		var dev: bool=game.screen==game.Screen.DEV_TWEAKS
+		option_tabs[i].visible=game.screen in [game.Screen.DEV_TWEAKS,game.Screen.OPTIONS]
+		option_tabs[i].text=(["Material & lab","Throw & camera"] if dev else ["Performance","Tidal lighting"])[i]
+		option_tabs[i].modulate=ACCENT if i+(0 if dev else 2)==option_page else Color.WHITE
 	for i in material_buttons.size():
 		material_buttons[i].visible=option_page==0
 		material_buttons[i].modulate=ACCENT if i==game.material_index else Color.WHITE
@@ -214,8 +222,10 @@ func sync_options() -> void:
 	for spec in performance_specs:
 		if not performance_buttons.has(spec.key): continue
 		var button: Button=performance_buttons[spec.key]
-		button.visible=option_page==2
+		button.visible=option_page==spec.get("page",2)
 		button.text=spec.choices[spec.values.find(game.get(spec.key))]+"   ›"
+		button.disabled=spec.get("desktop",false) and not game.desktop_effects
+		if button.disabled: button.text="Desktop only"
 	queue_redraw()
 
 func show_score(at: Vector3,points_awarded: int,color: Color) -> void:
@@ -294,7 +304,7 @@ func _draw_menu() -> void:
 		draw_circle(Vector2(147+i*30,222),7,SoftBall.COLORS[i])
 	text_at("SOFT",Vector2(130,315),76)
 	text_at("MOUNTAIN",Vector2(130,399),76)
-	text_at("A small experiment in squishy things.",Vector2(136,444),19,MUTED)
+	text_at("Tidal Glow · a living pool of soft light.",Vector2(136,444),19,MUTED)
 
 func _draw_game() -> void:
 	_draw_merge_stars()
@@ -426,13 +436,17 @@ func _draw_options() -> void:
 	var dev: bool=game.screen==game.Screen.DEV_TWEAKS
 	text_at("Dev tweaks" if dev else "Options",Vector2(374,141),36)
 	text_at("Shape the way things feel." if dev else "Performance and display.",Vector2(376,172),15,MUTED)
-	if option_page==2:
-		text_at("Performance",Vector2(374,222),20,ACCENT)
+	if option_page>=2:
 		for spec in performance_specs:
+			if spec.get("page",2)!=option_page: continue
 			text_at(spec.label,Vector2(spec.x,spec.y),16)
 			text_at(spec.hint,Vector2(spec.x,spec.y+84),12,MUTED)
 		text_at("Current frame rate: %d FPS" % Engine.get_frames_per_second(),Vector2(374,669),15,ACCENT)
-		text_at("Try lower ball detail and shadows off first.",Vector2(746,669),12,MUTED)
+		if option_page==2: text_at("Try lower ball detail and shadows off first.",Vector2(746,669),12,MUTED)
+		else:
+			text_at("Forward+ desktop" if game.desktop_effects else "Browser / Compatibility",Vector2(746,423),18,ACCENT)
+			text_at("Up to 8 living lights." if game.desktop_effects else "Up to 4 living lights, backlit tissue.",Vector2(746,457),13,MUTED)
+			text_at("Scattering and bloom can be compared live." if game.desktop_effects else "Try the desktop build for scattering and bloom.",Vector2(374,570),15,MUTED)
 	if option_page==1: text_at("Stop at the first predicted contact.",Vector2(746,670),12,MUTED)
 	for spec in slider_specs:
 		if spec.get("page",0)!=option_page: continue

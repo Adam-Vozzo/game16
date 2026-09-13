@@ -25,3 +25,13 @@ environment/defaults/default_clear_color=Color(0.039, 0.055, 0.071, 1)
 
 [physics]
 common/physics_ticks_per_second=60
+
+[shader_globals]
+tidal_time={
+"type": "float",
+"value": 0.0
+}
+tidal_scattering={
+"type": "float",
+"value": 0.0
+}

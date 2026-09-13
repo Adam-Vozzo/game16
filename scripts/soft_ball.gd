@@ -5,6 +5,7 @@ extends RefCounted
 
 const COLORS: Array[Color] = [Color("7ed9ad"),Color("ffad87"),Color("a6a0ef"),Color("f1cf75"),Color("7bc7e8"),Color("e58caf"),Color("b3d77b"),Color("f28076")]
 const RADII: Array[float] = [0.39,0.49,0.62,0.78,0.98,1.24,1.56,1.97]
+const CORE_SCALE := 0.86
 
 var tier: int
 var radius: float
@@ -35,6 +36,7 @@ var core_instance: MeshInstance3D
 var render_edges := PackedVector3Array()
 var render_indices := PackedInt32Array()
 var render_detail := 2
+var render_colors := PackedColorArray()
 
 func _init(level: int, origin: Vector3, initial_velocity: Vector3, topology: Dictionary) -> void:
 	tier = clampi(level,0,RADII.size()-1)
@@ -174,6 +176,13 @@ func _build_render_topology() -> void:
 	# Godot uses clockwise front faces; the simulation uses outward CCW faces.
 	for f in range(0,refined.size(),3):
 		render_indices.append_array(PackedInt32Array([refined[f],refined[f+2],refined[f+1]]))
+	var directions := PackedVector3Array()
+	for point in rest: directions.append(point.normalized())
+	for edge in render_edges: directions.append((directions[int(edge.x)]+directions[int(edge.y)]).normalized())
+	render_colors.clear()
+	for direction in directions:
+		var encoded := direction*0.5+Vector3.ONE*0.5
+		render_colors.append(Color(encoded.x,encoded.y,encoded.z))
 
 func set_render_detail(detail: int) -> void:
 	if render_detail==detail: return
@@ -183,12 +192,12 @@ func set_render_detail(detail: int) -> void:
 
 func create_visual(parent: Node3D) -> void:
 	mesh_instance = MeshInstance3D.new()
-	mesh_instance.material_override = SoftGeometry.cell_shell(COLORS[tier])
+	mesh_instance.material_override = SoftGeometry.cell_shell(COLORS[tier],true)
 	mesh_instance.cast_shadow=GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
 	parent.add_child(mesh_instance)
 	core_instance=MeshInstance3D.new()
-	core_instance.material_override=SoftGeometry.cell_core(COLORS[tier])
-	core_instance.scale=Vector3.ONE*0.76
+	core_instance.material_override=SoftGeometry.cell_core(COLORS[tier],true)
+	core_instance.scale=Vector3.ONE*CORE_SCALE
 	mesh_instance.add_child(core_instance)
 	update_visual()
 
@@ -218,6 +227,7 @@ func update_visual() -> void:
 	arrays[Mesh.ARRAY_VERTEX] = vertices
 	arrays[Mesh.ARRAY_NORMAL] = normals
 	arrays[Mesh.ARRAY_INDEX] = render_indices
+	arrays[Mesh.ARRAY_COLOR] = render_colors
 	var mesh := ArrayMesh.new()
 	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_TRIANGLES,arrays)
 	mesh_instance.mesh = mesh

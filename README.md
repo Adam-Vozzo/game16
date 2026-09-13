@@ -1,6 +1,6 @@
 # Soft Mountain
 
-A playable Godot prototype about tossing soft coloured cells into a ceramic bowl. Each has a translucent membrane around a solid coloured core. Matching tiers merge; different tiers compress, wobble, and push each other. No fruit, imported art, paid assets, or addons.
+A playable Godot prototype about tossing jellyfish-like soft cells into a glowing tidal pool. Each has a translucent membrane, luminous canals, and coloured inner tissue. Matching tiers merge; different tiers compress, wobble, and push each other. No fruit, imported art, paid assets, or addons.
 
 ![Soft Mountain main menu](docs/menu.png)
 
@@ -15,6 +15,18 @@ The exported game is checked into `docs/`. GitHub Pages uses **Settings → Page
 The **Web** export preset writes `build/web/index.html` and its companion files. Keep all exported files together. For local testing, serve that folder over HTTP (for example, `python -m http.server 8765 --directory build/web`) and open `http://localhost:8765/`; opening the HTML directly from disk will not work. A ready-to-upload local package is `build/SoftMountain-Web.zip`.
 
 Web uses Godot's Compatibility renderer and a single-threaded export, so it runs on static hosting without special cross-origin headers. Desktop uses Forward+; the Compatibility lighting is tuned separately to keep the bowl close to the desktop brightness. The cell layers and soft-body simulation are shared by both builds. The first visit downloads the WebAssembly engine, and crowded bowls may run slower on weaker devices.
+
+## Tidal Glow experiment
+
+The separate local Windows build is `build/SoftMountain-TidalGlow.exe`. It uses Forward+ with real screen-space subsurface scattering on the opaque inner tissue, transmittance, and HDR bloom. **Options → Tidal lighting** lets you compare living lights, scattering, and bloom independently. Godot only implements subsurface scattering in Forward+ ([documentation](https://docs.godotengine.org/en/stable/tutorials/3d/standard_material_3d.html#subsurface-scattering)).
+
+The browser build uses the same membrane, filaments, tier colours and physics, with backlighting as a cheaper tissue approximation. Scattering and bloom are disabled there. The living-light pool is bounded at eight lights on desktop or four on the browser; Reduced uses half that budget and is the browser default. The largest cells light the bowl and neighbouring bodies; merges briefly reserve pool slots for coloured light pulses. These point lights do not cast additional shadows. Living lights Off retains the emissive filament pattern.
+
+Filaments use coordinates attached to the undeformed cage, so they stretch with the actual simulated tissue. Their travelling light pulses and the stylized caustic pattern on the bowl freeze with Pause and follow slow motion. The caustics are a procedural material effect, not a fluid or optical simulation. The dark rock rim and small coral shapes use two static instanced meshes, with no added collision geometry. No refraction, volumetric water or real-time global illumination is implied by the translucent look.
+
+![Tidal Glow desktop scattering](docs/tidal-desktop.png)
+
+Validation includes fixed light budgets, effect expiry, pause behaviour, deformation coordinates, platform capability controls and an actual Forward+ scattering on/off image comparison. The render comparison also checks that turning scattering off leaves valid lit tissue.
 
 ## Play
 
@@ -59,7 +71,7 @@ This is a custom position-based solver in GDScript, rather than `SoftBody3D`. Jo
 
 Each ball has a welded icosphere cage of 42 moving particles, 120 structural edges, and 80 oriented faces. At 180 substeps per second, distance constraints resist stretching, a closed-mesh signed-volume constraint preserves bulk, and gentle rotation-independent radial recovery encourages a spherical resting shape. Internal velocity damping controls wobble without stopping the whole body's translation. Contact corrects patches of actual shell particles on both bodies, balanced by mass, so deformation changes how a pile settles. The bowl also collides with individual particles using the same analytic profile as its rendered mesh.
 
-The rendered surface subdivides the cage into 642 vertices and 1,280 smooth-shaded triangles. It follows the simulated particles, with a small curved edge interpolation. Two instances share this deformed mesh: a glossy translucent membrane at full size and an opaque, softly textured core at 76% scale. The core is purely visual and adds no rigid collider; the membrane remains the contact surface. Transparency is an artistic approximation rather than optical refraction. It is not a scaled rigid sphere or a shader-only squash effect. Slow motion advances the same fixed steps less frequently, preserving the material settings.
+The rendered surface subdivides the cage into 642 vertices and 1,280 smooth-shaded triangles. It follows the simulated particles, with a small curved edge interpolation. Two instances share this deformed mesh: a glossy translucent membrane at full size and an opaque, softly scattering inner tissue at 86% scale. The core is purely visual and adds no rigid collider; the membrane remains the contact surface. Transparency is an artistic approximation rather than optical refraction. It is not a scaled rigid sphere or a shader-only squash effect. Slow motion advances the same fixed steps less frequently, preserving the material settings.
 
 **Prototype limits:** contact normals are approximated using the centers of two convex sphere-like bodies; this is not a general solver for concave meshes or cloth. There is no self-collision, tearing, liquid simulation, or plastic deformation. Extremely crowded/deeply intersecting configurations may need more resolution or a native solver. The 44-body cap bounds CPU work. The material presets are artistic approximations, not calibrated physical materials. No high-score persistence, multiplayer, or final art is included.
 
@@ -87,6 +99,8 @@ godot --headless --path . --script res://tests/merge_tests.gd
 godot --headless --path . --script res://tests/ui_tests.gd
 godot --headless --path . --script res://tests/aim_tests.gd
 godot --headless --path . --script res://tests/performance_tests.gd
+godot --headless --path . --script res://tests/tidal_tests.gd
+godot --path . --rendering-method forward_plus --script res://tests/tidal_render_tests.gd
 ```
 
 Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world. Merge regressions cover grounded merges across all presets, crowded contacts, inherited airborne movement, and expiry of the settling guard.
