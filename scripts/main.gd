@@ -119,6 +119,11 @@ func _ready() -> void:
 	if "--confirm-reset" in OS.get_cmdline_user_args():
 		set_screen(Screen.PAUSE)
 		request_new_bowl()
+	if OS.has_feature("web"): _finish_web_loading.call_deferred()
+
+func _finish_web_loading() -> void:
+	await RenderingServer.frame_post_draw
+	JavaScriptBridge.eval("if (window.softMountainReady) window.softMountainReady();")
 
 func _build_stage() -> void:
 	# Compatibility (including WebGL) produces a brighter result from the same

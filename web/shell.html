@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#050b1b">
-<title>Soft Mountain</title>
+<title>$GODOT_PROJECT_NAME</title>
 <style>
 * { box-sizing: border-box; }
 html, body { margin: 0; width: 100%; height: 100%; overflow: hidden; background: #050b1b; }
@@ -38,16 +38,14 @@ noscript { position: fixed; bottom: 8%; z-index: 20; width: 100%; text-align: ce
 @media (max-height: 540px) { .composition { width: min(900px, 95vw, 95vh); } .hint { display: none; } }
 @media (prefers-reduced-motion: reduce) { #loading { transition: none; } progress { animation: none !important; } }
 </style>
-<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
-<link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
-<meta name="description" content="Toss squishy cells into a bowl. Match colours, merge, and build a Soft Mountain. Keyboard and mouse required.">
+$GODOT_HEAD_INCLUDE
 </head>
 <body>
 <canvas id="canvas" tabindex="0" aria-label="Soft Mountain game">Your browser needs canvas support to play.</canvas>
 <section id="loading" aria-label="Loading Soft Mountain" aria-busy="true">
   <div class="composition">
     <h1 class="sr-only">Soft Mountain — Tidal Glow</h1>
-    <img class="art" src="index.png" width="1440" height="900" alt="Three luminous jelly cells drifting above a tidal current">
+    <img class="art" src="$GODOT_SPLASH" width="1440" height="900" alt="Three luminous jelly cells drifting above a tidal current">
     <div class="readout">
       <div class="status-row"><span id="phase" role="status">Gathering the glow</span><span id="percent" aria-hidden="true"></span></div>
       <progress id="progress" aria-label="Game download progress"></progress>
@@ -89,7 +87,7 @@ noscript { position: fixed; bottom: 8%; z-index: 20; width: 100%; text-align: ce
     setTimeout(() => { overlay.remove(); delete window.softMountainReady; }, 450);
   };
   const script = document.createElement('script');
-  script.src = 'index.js';
+  script.src = '$GODOT_URL';
   script.onerror = () => fail('Could not load the game. Check your connection and try again.');
   script.onload = () => {
     const missing = Engine.getMissingFeatures({ threads: false });
@@ -97,7 +95,7 @@ noscript { position: fixed; bottom: 8%; z-index: 20; width: 100%; text-align: ce
       fail('This pool needs WebGL 2. Please open it in a desktop browser with hardware acceleration enabled.');
       return;
     }
-    const engine = new Engine({"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":448852,"index.wasm":39514754},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4});
+    const engine = new Engine($GODOT_CONFIG);
     engine.startGame({ onProgress: (current, total) => {
       if (failed) return;
       if (total > 0 && current < total) {
@@ -117,4 +115,3 @@ noscript { position: fixed; bottom: 8%; z-index: 20; width: 100%; text-align: ce
 </script>
 </body>
 </html>
-
