@@ -6,6 +6,7 @@ const MUTED := Color("8da5a6")
 const ACCENT := Color("a5daed")
 const PANEL := Color("111f35")
 var game: Node3D
+var mobile_ui: Control
 var font: Font = ThemeDB.fallback_font
 var menu_controls: Control
 var play_controls: Control
@@ -126,6 +127,10 @@ func _ready() -> void:
 		if game.screen==game.Screen.DEV_TWEAKS: game.reset_dev_tweaks()
 		else: game.reset_options(),false,14)
 	_button(options_controls,"Done",Rect2(909,751,163,43),func(): game.close_options(),true,16)
+	mobile_ui=load("res://scripts/mobile_ui.gd").new()
+	mobile_ui.game=game
+	mobile_ui.host=self
+	add_child(mobile_ui)
 	sync_screen()
 	sync_options()
 
@@ -195,6 +200,11 @@ func sync_screen() -> void:
 	options_controls.visible=game.screen in [game.Screen.OPTIONS,game.Screen.DEV_TWEAKS]
 	end_controls.visible=game.screen==game.Screen.GAME_OVER
 	reset_controls.visible=game.screen==game.Screen.CONFIRM_RESET
+	if game.mobile_mode:
+		menu_controls.hide()
+		play_controls.hide()
+		modal_blocker.hide()
+	if is_instance_valid(mobile_ui): mobile_ui.sync_screen()
 	var focus := get_viewport().gui_get_focus_owner()
 	if is_instance_valid(focus): focus.release_focus()
 	sync_options()
@@ -204,6 +214,7 @@ func _option_owner(key: String) -> Object:
 	return game.sim if key in ["stiffness","recovery","damping","weight_scale","gravity","bowl_grip"] else game
 
 func sync_options() -> void:
+	if is_instance_valid(mobile_ui): mobile_ui.sync_values()
 	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
 	for spec in slider_specs:
 		var slider: HSlider=sliders[spec.key]
@@ -290,6 +301,10 @@ func panel(rect: Rect2,color: Color,radius: int=20) -> void:
 
 func _draw() -> void:
 	if not game: return
+	if game.mobile_mode:
+		_draw_merge_stars()
+		_draw_score_popups()
+		return
 	var menu_backdrop: bool=game.screen==game.Screen.MENU or (game.screen==game.Screen.OPTIONS and game.options_return==game.Screen.MENU)
 	if menu_backdrop: _draw_menu()
 	else: _draw_game()
@@ -340,6 +355,9 @@ func _draw_game() -> void:
 		_cell_icon(Vector2(1346,y),20-i*2,SoftBall.COLORS[game.queue[i]])
 	centered("A / D  rotate     W / S  trajectory     Space / Click  toss     Scroll  zoom     Esc  pause",Vector2(720,855),13,MUTED)
 	if notice_time>0: centered(notice,Vector2(720,817),14,ACCENT)
+	_draw_score_popups()
+
+func _draw_score_popups() -> void:
 	for popup in score_popups:
 		var at: Vector3=popup.at+Vector3.UP*(0.4+popup.time*0.95)
 		if game.camera.is_position_behind(at): continue

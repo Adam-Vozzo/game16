@@ -30,6 +30,9 @@ environment/defaults/default_clear_color=Color(0.039, 0.055, 0.071, 1)
 [physics]
 common/physics_ticks_per_second=60
 
+[input_devices]
+pointing/emulate_mouse_from_touch=true
+
 [shader_globals]
 tidal_emission={
 "type": "float",

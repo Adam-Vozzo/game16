@@ -8,7 +8,7 @@ A playable Godot prototype about tossing jellyfish-like soft cells into a glowin
 
 ## Browser version
 
-[Play Soft Mountain in your browser](https://adam-vozzo.github.io/game16/). Use a desktop browser with a keyboard and mouse; touch controls are not implemented.
+[Play Soft Mountain in your browser](https://adam-vozzo.github.io/game16/). Play with keyboard and mouse on desktop, or use the large bottom controls on a phone or tablet.
 
 The loading screen uses shared Tidal Glow artwork on desktop and web. The browser shell shows real download progress, a preparation phase, and a retry message if loading fails; it fades out after the game renders its first frame. The artwork can be rebuilt with `godot --path . --rendering-method gl_compatibility --script res://tools/generate_splash.gd`. The custom browser shell is `web/shell.html`.
 
@@ -17,6 +17,14 @@ The exported game is checked into `docs/`. GitHub Pages uses **Settings → Page
 The **Web** export preset writes `build/web/index.html` and its companion files. Keep all exported files together. For local testing, serve that folder over HTTP (for example, `python -m http.server 8765 --directory build/web`) and open `http://localhost:8765/`; opening the HTML directly from disk will not work. A ready-to-upload local package is `build/SoftMountain-Web.zip`.
 
 Web uses Godot's Compatibility renderer and a single-threaded export, so it runs on static hosting without special cross-origin headers. Desktop uses Forward+; the Compatibility lighting is tuned separately to keep the bowl close to the desktop brightness. The cell layers and soft-body simulation are shared by both builds. The first visit downloads the WebAssembly engine, and crowded bowls may run slower on weaker devices.
+
+## Mobile web layout
+
+The browser switches to a touch layout at 900 CSS pixels wide, or up to 1100 pixels on devices with a coarse pointer. Hold the rotation arrows and trajectory arrows to aim; release the **Toss** button to throw once. Two fingers can adjust rotation and trajectory together. Sliding off a control cancels it. Pause, focus loss and resizing clear held input; tapping the bowl does not throw.
+
+Portrait uses two rows of large controls, and landscape uses one row. The camera fits the bowl above the controls. Score, upcoming colours and the tier guide use a compact HUD, and all menus reflow into readable, scrollable phone panels. Bottom safe-area spacing keeps controls away from the home indicator. Returning to a desktop-sized window restores the desktop HUD without restarting the round.
+
+Native layout previews: `godot --path . --resolution 390x844 -- --mobile --demo` or `--resolution 844x390` for landscape. The browser chooses the layout automatically. Automated checks include simultaneous touches, release-to-toss, canceled drags, duplicate mouse events, modal isolation, settings, and layout changes (`tests/mobile_tests.gd`). Physical iOS/Android hardware has not been tested.
 
 ## Tidal Glow experiment
 

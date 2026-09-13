@@ -71,6 +71,9 @@ var demo := false
 var demo_timer := 0.0
 var simulation_accumulator := 0.0
 var capture_name := "prototype"
+var mobile_mode := false
+var mobile_view := Vector2i.ZERO
+var mobile_safe_bottom := 0.0
 
 func _ready() -> void:
 	desktop_effects=RenderingServer.get_current_rendering_method()=="forward_plus"
@@ -119,7 +122,29 @@ func _ready() -> void:
 	if "--confirm-reset" in OS.get_cmdline_user_args():
 		set_screen(Screen.PAUSE)
 		request_new_bowl()
+	get_window().size_changed.connect(_refresh_mobile_layout)
+	_refresh_mobile_layout()
 	if OS.has_feature("web"): _finish_web_loading.call_deferred()
+
+func _refresh_mobile_layout() -> void:
+	var view := Vector2i.ZERO
+	var enabled := false
+	if OS.has_feature("web"):
+		var data: Variant=JSON.parse_string(JavaScriptBridge.eval("JSON.stringify({w:innerWidth,h:innerHeight,m:matchMedia('(max-width: 900px), (pointer: coarse) and (max-width: 1100px)').matches,s:parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--safe-bottom'))||0})"))
+		if data is Dictionary:
+			view=Vector2i(data.w,data.h)
+			enabled=data.m
+			mobile_safe_bottom=float(data.s)
+	elif "--mobile" in OS.get_cmdline_user_args():
+		enabled=true
+		view=get_window().size
+	if enabled==mobile_mode and (not enabled or view==mobile_view): return
+	mobile_mode=enabled
+	mobile_view=view
+	get_window().content_scale_size=view if enabled else Vector2i(1440,900)
+	get_window().content_scale_aspect=Window.CONTENT_SCALE_ASPECT_EXPAND if enabled else Window.CONTENT_SCALE_ASPECT_KEEP
+	_update_camera()
+	if is_instance_valid(hud): hud.sync_screen()
 
 func _finish_web_loading() -> void:
 	await RenderingServer.frame_post_draw
@@ -224,6 +249,7 @@ func _ring(radius: float,thickness: float,color: Color) -> MeshInstance3D:
 
 func set_screen(value: Screen) -> void:
 	screen=value
+	if is_instance_valid(hud) and is_instance_valid(hud.mobile_ui): hud.mobile_ui.release_all()
 	_update_camera()
 	if is_instance_valid(hud): hud.sync_screen()
 
@@ -289,6 +315,15 @@ func _update_camera() -> void:
 	camera.look_at(Vector3(0,0.5,0))
 	camera.position+=camera.basis.x*(-3.55 if menu_backdrop else 0.0)
 	camera.size=13.5 if menu_backdrop else zoom
+	camera.keep_aspect=Camera3D.KEEP_HEIGHT
+	if mobile_mode:
+		if menu_backdrop: camera.position+=camera.basis.x*3.55
+		camera.keep_aspect=Camera3D.KEEP_WIDTH
+		var view := get_viewport().get_visible_rect().size
+		var dock := 160.0+mobile_safe_bottom if view.x<600 else 112.0+mobile_safe_bottom
+		camera.size=maxf(zoom,6.8*view.x/maxf(100,view.y-dock-70))
+		camera.position-=camera.basis.y*((dock-70)*0.5*camera.size/view.x)
+		if menu_backdrop and view.y>view.x: camera.position-=camera.basis.y*(view.y*0.16*camera.size/view.x)
 	launch=Vector3(sin(angle)*5.05,3.25,cos(angle)*5.05)
 
 func orbit(amount: float) -> void:
@@ -304,7 +339,7 @@ func _input(event: InputEvent) -> void:
 func _unhandled_input(event: InputEvent) -> void:
 	if paused: return
 	if event is InputEventMouseButton:
-		if event.button_index==MOUSE_BUTTON_LEFT and event.pressed: toss()
+		if not mobile_mode and event.button_index==MOUSE_BUTTON_LEFT and event.pressed: toss()
 		if event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			zoom=clampf(zoom-0.5,10.5,17)
 			_update_camera()
@@ -442,6 +477,7 @@ func _process(delta: float) -> void:
 	frame+=1
 	if not paused:
 		cooldown=maxf(0,cooldown-delta)
+		if mobile_mode: hud.mobile_ui.apply_holds(delta)
 		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*deg_to_rad(rotation_speed))
 		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*deg_to_rad(rotation_speed))
 		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*trajectory_speed)
