@@ -27,10 +27,15 @@ var spill_enabled := true
 var floor_height := -3.0
 var contacts_this_step := 0
 var visual_parent: Node3D
+var render_detail := 2:
+	set(value):
+		render_detail=clampi(value,0,2)
+		for ball in balls: ball.set_render_detail(render_detail)
 
 func spawn(tier: int, at: Vector3, velocity: Vector3 = Vector3.ZERO) -> SoftBall:
 	var ball := SoftBall.new(tier,at,velocity,topology)
 	ball.mass=ball.base_mass*weight_scale
+	ball.set_render_detail(render_detail)
 	balls.append(ball)
 	if is_instance_valid(visual_parent): ball.create_visual(visual_parent)
 	return ball

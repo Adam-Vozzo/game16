@@ -27,6 +27,7 @@ func run() -> void:
 	game.hud.set_process(false)
 	check(game.screen==game.Screen.MENU and game.paused,"Startup shows main menu with simulation paused")
 	check(game.material_index==2 and is_equal_approx(game.sim.stiffness,0.1),"Dough remains the default")
+	check(not game.smart_trajectory,"Normal pass-through trajectory is the default")
 	var count: int=game.sim.balls.size()
 	game.toss()
 	check(game.sim.balls.size()==count,"Main menu cannot throw into its backdrop")
@@ -34,6 +35,9 @@ func run() -> void:
 	check(game.screen==game.Screen.OPTIONS and game.hud.modal_blocker.visible,"Main menu opens shared options modal")
 	game.hud.option_tabs[1].pressed.emit()
 	check(game.hud.sliders.throw_speed.visible and not game.hud.sliders.weight_scale.visible,"Throw and camera tab reveals its own controls")
+	check(game.hud.smart_button.visible and game.hud.smart_button.text.ends_with("OFF"),"Throw and camera options show Smart trajectory off")
+	game.hud.smart_button.pressed.emit()
+	check(game.smart_trajectory and game.hud.smart_button.text.ends_with("ON"),"Smart trajectory can be enabled from Options")
 	game.hud.sliders.min_elevation.value=10
 	game.hud.sliders.max_elevation.value=45
 	game.hud.sliders.trajectory_speed.value=60
@@ -60,6 +64,10 @@ func run() -> void:
 	check(game.screen==game.Screen.PLAY and not game.paused,"Play starts a fresh round")
 	check(game.lab_mode and game.slow_motion and game.sim.weight_scale==2,"Starting a round preserves chosen options")
 	check(game.rotation_speed==100.0,"Starting a round preserves the rotation speed selected in Options")
+	check(game.smart_trajectory,"Starting a round preserves Smart trajectory selection")
+	game._process(0)
+	game.hud._process(0)
+	check(not game.hud.aim_groups[0].visible and game.hud.aim_groups[1].visible,"Smart mode hides occluded guide sections")
 	check(game.min_elevation==10 and game.max_elevation==45 and game.throw_speed==8 and game.trajectory_speed==60 and game.camera_height==55 and game.camera_offset==-30,"New rounds preserve throw and camera settings")
 	var throw_angle: float=game.throw_elevation
 	Input.parse_input_event(key_event(KEY_W,true))
@@ -88,6 +96,9 @@ func run() -> void:
 	check(side_distance>1.5 and is_equal_approx(absf(game.camera.basis.x.dot(game.launch)),side_distance),"Camera keeps the throw visibly to one side throughout rotation")
 	check(is_equal_approx(game.sim.balls[0].mass,game.sim.balls[0].base_mass*2),"New bodies inherit current weight")
 	game.reset_options()
+	game._process(0)
+	game.hud._process(0)
+	check(not game.smart_trajectory and game.hud.aim_groups[0].visible and is_equal_approx(game.hud.aim_groups[0].self_modulate.a,0.18),"Reset restores pass-through mode with occluded sections at eighteen percent opacity")
 	check(game.min_elevation==-12 and game.max_elevation==68 and game.throw_speed==6.4 and game.trajectory_speed==32 and game.camera_height==37.5 and game.camera_offset==20,"Defaults restore every throw and camera setting")
 	check(not game.camera.transform.is_equal_approx(tuned_camera),"Camera tuning affects its transform")
 	check(game.rotation_speed==game.DEFAULT_ROTATION_SPEED and game.hud.sliders.rotation_speed.value==game.DEFAULT_ROTATION_SPEED,"Reset defaults restores rotation speed and its slider")

@@ -22,6 +22,8 @@ func _initialize() -> void:
 	check(result.hit and result.ball==obstacle,"Preview detects the first ball instead of continuing to the bowl")
 	check(result.center.z>obstacle.radius and result.point.z>0.7 and result.normal.z>0.8,"Impact center accounts for the thrown radius and marker lies on the hit shell")
 	check(obstacle.points==before and obstacle.age==0 and sim.balls.size()==1,"Preview leaves the live simulation unchanged")
+	var through := AimPreview.trace(sim,origin,velocity,SoftBall.RADII[0],false)
+	check(not through.hit and through.ball==null and through.center.z<0,"Normal trajectory continues through the ball without predicting its collision")
 	var incoming := sim.spawn(0,origin,velocity)
 	for frame in 120:
 		sim.step(1.0/60.0)
@@ -40,6 +42,7 @@ func _initialize() -> void:
 	result=AimPreview.trace(sim,Vector3(4,0,0),Vector3(-6.4,0,0),SoftBall.RADII[0])
 	check(result.center.x<round.center.x-0.35,"Preview follows a squashed shell instead of its bounding sphere")
 	check(AimPreview.occluded(Vector3(0,0,-3),Vector3.BACK,sim.balls),"Trajectory behind a ball is hidden")
+	check(AimPreview.occluded(Vector3.ZERO,Vector3.BACK,sim.balls),"Trajectory inside a deformed ball is classified as occluded")
 	check(not AimPreview.occluded(Vector3(0,0,3),Vector3.BACK,sim.balls),"Trajectory in front of a ball stays visible")
 	check(not AimPreview.occluded(Vector3(0.65,0,-3),Vector3.BACK,sim.balls),"Occlusion respects the deformed silhouette")
 	sim.clear()
@@ -49,6 +52,9 @@ func _initialize() -> void:
 	result=AimPreview.trace(sim,Vector3(0,3,0),Vector3.ZERO,SoftBall.RADII[0])
 	check(result.hit and result.ball==null and absf(result.point.y)<0.001,"Empty-bowl marker lies on the actual bowl surface")
 	check(absf(result.center.y-SoftBall.RADII[0]-AimPreview.SKIN)<0.002,"Bowl contact accounts for the thrown shell and solver margin")
+	sim.spawn(3,Vector3(0,1.2,0))
+	through=AimPreview.trace(sim,Vector3(0,3,0),Vector3.ZERO,SoftBall.RADII[0],false)
+	check(through.ball==null and through.point.is_equal_approx(result.point) and through.center.is_equal_approx(result.center),"Normal mode keeps the same bowl endpoint with or without a pile")
 	sim.bowl_enabled=false
 	sim.floor_height=-100
 	sim.gravity=0

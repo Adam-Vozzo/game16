@@ -20,6 +20,17 @@ var material_buttons: Array[Button] = []
 var sliders: Dictionary = {}
 var lab_button: Button
 var slow_button: Button
+var smart_button: Button
+var aim_layers: Array[Node2D] = []
+var aim_groups: Array[CanvasGroup] = []
+var performance_buttons: Dictionary = {}
+var performance_specs := [
+	{"key":"ball_detail","label":"Ball detail","choices":["Low","Medium","High"],"values":[0,1,2],"hint":"Simpler surfaces reduce mesh-building work.","x":374,"y":282},
+	{"key":"visual_rate","label":"Ball animation","choices":["30 Hz","60 Hz","Every frame"],"values":[30,60,0],"hint":"Visual refresh only; physics stays the same.","x":746,"y":282},
+	{"key":"shadows_enabled","label":"Shadows","choices":["Off","On"],"values":[false,true],"hint":"Turn off cast shadows to ease GPU load.","x":374,"y":410},
+	{"key":"antialiasing","label":"Edge smoothing","choices":["Off","2×","4×"],"values":[0,1,2],"hint":"Lower settings reduce GPU work.","x":746,"y":410},
+	{"key":"merge_effects","label":"Merge effects","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Fewer stars and simpler trails.","x":374,"y":538},
+	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":538}]
 var score_popups: Array[Dictionary] = []
 var merge_stars: Array[Dictionary] = []
 var notice := ""
@@ -42,6 +53,18 @@ var slider_specs := [
 func _ready() -> void:
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	# Composite each portion before fading so overlapping dots retain one outline
+	# and a uniform opacity. Both groups sit below the HUD and modal backdrop.
+	for hidden in [true,false]:
+		var group := CanvasGroup.new()
+		group.self_modulate.a=0.18 if hidden else 1.0
+		get_parent().add_child(group)
+		get_parent().move_child(group,get_index())
+		var drawing := Node2D.new()
+		group.add_child(drawing)
+		drawing.draw.connect(_draw_aim.bind(drawing,hidden))
+		aim_groups.append(group)
+		aim_layers.append(drawing)
 	menu_controls=_group(self)
 	_button(menu_controls,"Play",Rect2(136,500,314,62),func(): game.restart(),true,22)
 	_button(menu_controls,"Options",Rect2(136,578,314,52),func(): game.open_options(),false,18)
@@ -63,9 +86,9 @@ func _ready() -> void:
 	_button(reset_controls,"Reset round",Rect2(734,482,198,52),func(): game.restart(),true,16)
 	options_controls=_group(modal_blocker)
 	_button(options_controls,"×",Rect2(1042,105,40,40),func(): game.close_options(),false,24)
-	for i in 2:
+	for i in 3:
 		var page := i
-		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera"][i],Rect2(374+i*356,194,342,42),func(): option_page=page; sync_options(),false,16))
+		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera","Performance"][i],Rect2(374+i*236,194,226,42),func(): option_page=page; sync_options(),false,16))
 	for i in 3:
 		var index := i
 		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,254,218,43),func(): game.set_material(index),false,16))
@@ -76,6 +99,15 @@ func _ready() -> void:
 	lab_button.tooltip_text="Disable merging and the spill limit."
 	slow_button=_button(options_controls,"Slow motion",Rect2(746,648,326,44),func(): game.slow_motion=not game.slow_motion; sync_options(),false,16)
 	slow_button.tooltip_text="Watch collisions at quarter speed."
+	smart_button=_button(options_controls,"Smart trajectory",Rect2(746,602,326,44),func(): game.smart_trajectory=not game.smart_trajectory; game._update_aim(); sync_options(),false,16)
+	smart_button.tooltip_text="Stop the guide at the first predicted contact with a ball."
+	for spec in performance_specs:
+		var setting: Dictionary=spec
+		var button := _button(options_controls,spec.label,Rect2(spec.x,spec.y+16,326,44),func():
+			var current: int=setting.values.find(game.get(setting.key))
+			game.set_performance_option(setting.key,setting.values[(current+1)%setting.values.size()]),false,16)
+		button.tooltip_text=spec.hint
+		performance_buttons[spec.key]=button
 	_button(options_controls,"Reset defaults",Rect2(374,751,172,43),func(): game.reset_options(),false,14)
 	_button(options_controls,"Done",Rect2(909,751,163,43),func(): game.close_options(),true,16)
 	sync_screen()
@@ -169,14 +201,25 @@ func sync_options() -> void:
 		lab_button.modulate=ACCENT if game.lab_mode else Color.WHITE
 		slow_button.text="Slow motion     "+("0.25×" if game.slow_motion else "1×")
 		slow_button.modulate=ACCENT if game.slow_motion else Color.WHITE
+	if is_instance_valid(smart_button):
+		smart_button.visible=option_page==1
+		smart_button.text="Smart trajectory     "+("ON" if game.smart_trajectory else "OFF")
+		smart_button.modulate=ACCENT if game.smart_trajectory else Color.WHITE
+	for spec in performance_specs:
+		if not performance_buttons.has(spec.key): continue
+		var button: Button=performance_buttons[spec.key]
+		button.visible=option_page==2
+		button.text=spec.choices[spec.values.find(game.get(spec.key))]+"   ›"
 	queue_redraw()
 
 func show_score(at: Vector3,points_awarded: int,color: Color) -> void:
 	score_popups.append({"at":at,"points":points_awarded,"color":color.lightened(0.45),"time":0.0})
 
 func show_merge_stars(at: Vector3,tier: int) -> void:
+	if game.merge_effects==0: return
 	# Deterministic cosmetic variation never consumes the gameplay random stream.
 	for i in 12:
+		if game.merge_effects==1 and i%2==1: continue
 		var theta := TAU*i/12.0+tier*0.43
 		var speed := 1.5+(i%3)*0.4
 		var velocity := Vector3(cos(theta)*speed,1.2+(i%4)*0.35,sin(theta)*speed)
@@ -192,6 +235,9 @@ func show_notice(text: String) -> void:
 	notice_time=3.0
 
 func _process(delta: float) -> void:
+	for i in aim_layers.size():
+		aim_groups[i].visible=game.aim_visible and (i==1 or not game.smart_trajectory)
+		aim_layers[i].queue_redraw()
 	if not game.paused:
 		for i in range(merge_stars.size()-1,-1,-1):
 			merge_stars[i].time+=delta
@@ -245,8 +291,8 @@ func _draw_menu() -> void:
 	text_at("A small experiment in squishy things.",Vector2(136,444),19,MUTED)
 
 func _draw_game() -> void:
-	_draw_aim()
 	_draw_merge_stars()
+	if game.show_fps: text_at("%d FPS" % Engine.get_frames_per_second(),Vector2(1290,855),13,MUTED)
 	centered("%04d" % game.score,Vector2(720,85),48)
 	centered("POINTS",Vector2(720,112),11,MUTED)
 	draw_line(Vector2(82,212),Vector2(82,742),Color("3a5457"),1)
@@ -291,7 +337,7 @@ func _draw_merge_stars() -> void:
 		var radius: float=star.size*lerpf(1.0,0.45,time/star.life)
 		# Layered, tapered trails give the shooting-star colour without relying
 		# on renderer-specific bloom. Their origin remains attached to the merge.
-		if not star.spark:
+		if not star.spark and game.merge_effects==2:
 			for segment in 6:
 				var t0 := maxf(0,time-0.3+segment*0.3/6.0)
 				var t1 := maxf(0,time-0.3+(segment+1)*0.3/6.0)
@@ -317,7 +363,7 @@ func _draw_merge_stars() -> void:
 		draw_colored_polygon(outline,Color(1.0,0.86,0.38,alpha))
 		draw_circle(head+Vector2(-0.2,-0.25)*radius,radius*0.22,Color(1.0,0.98,0.75,alpha*0.8),true,-1,true)
 
-func _draw_aim() -> void:
+func _draw_aim(canvas: Node2D,hidden: bool) -> void:
 	if not game.aim_visible: return
 	var outline := Color("152b32")
 	var fill := Color("fff2ca")
@@ -327,13 +373,13 @@ func _draw_aim() -> void:
 	var view: Vector3=game.camera.basis.z
 	for i in game.trajectory.size():
 		var world: Vector3=game.trajectory[i]
-		if game.camera.is_position_behind(world) or AimPreview.occluded(world,view,game.sim.balls): continue
+		if game.camera.is_position_behind(world) or AimPreview.occluded(world,view,game.sim.balls)!=hidden: continue
 		points.append(game.camera.unproject_position(world))
 		radii.append(2.8 if i%3==0 else 2.0)
 		indices.append(i)
 	# A short lead-in joins the ball-center path to the actual surface contact.
 	var contact: Vector3=game.landing_marker+game.landing_normal*0.045
-	if game.aim_hit and not game.camera.is_position_behind(contact) and not AimPreview.occluded(contact,view,game.sim.balls):
+	if game.aim_hit and not game.camera.is_position_behind(contact) and AimPreview.occluded(contact,view,game.sim.balls)==hidden:
 		points.append(game.camera.unproject_position(contact))
 		radii.append(1.3)
 		indices.append(game.trajectory.size())
@@ -344,8 +390,8 @@ func _draw_aim() -> void:
 		var color := outline if pass_index==0 else fill
 		for i in points.size():
 			if i>0 and indices[i]==indices[i-1]+1 and (indices[i]==game.trajectory.size() or points[i].distance_to(points[i-1])<radii[i]+radii[i-1]+1.0):
-				draw_line(points[i-1],points[i],color,(minf(radii[i],radii[i-1])+border)*2.0,true)
-			draw_circle(points[i],radii[i]+border,color,true,-1,true)
+				canvas.draw_line(points[i-1],points[i],color,(minf(radii[i],radii[i-1])+border)*2.0,true)
+			canvas.draw_circle(points[i],radii[i]+border,color,true,-1,true)
 	if not game.aim_hit: return
 	# The marker lies on the hit surface, rather than on the floor behind the pile.
 	var normal: Vector3=game.landing_normal
@@ -357,11 +403,11 @@ func _draw_aim() -> void:
 		var theta := TAU*i/48.0
 		var world: Vector3=game.landing_marker+normal*0.045+(axis*cos(theta)+other*sin(theta))*0.16
 		ring.append(world)
-		visible.append(not game.camera.is_position_behind(world) and not AimPreview.occluded(world,view,game.sim.balls))
+		visible.append(not game.camera.is_position_behind(world) and AimPreview.occluded(world,view,game.sim.balls)==hidden)
 	for pass_index in 2:
 		for i in 48:
 			if visible[i] and visible[i+1]:
-				draw_line(game.camera.unproject_position(ring[i]),game.camera.unproject_position(ring[i+1]),outline if pass_index==0 else fill,4.5 if pass_index==0 else 1.8,true)
+				canvas.draw_line(game.camera.unproject_position(ring[i]),game.camera.unproject_position(ring[i+1]),outline if pass_index==0 else fill,4.5 if pass_index==0 else 1.8,true)
 
 func _cell_icon(at: Vector2,radius: float,color: Color) -> void:
 	draw_circle(at,radius,Color(color.r,color.g,color.b,0.13))
@@ -373,6 +419,13 @@ func _draw_options() -> void:
 	panel(Rect2(326,80,788,749),PANEL,24)
 	text_at("Options",Vector2(374,141),36)
 	text_at("Shape the way things feel.",Vector2(376,172),15,MUTED)
+	if option_page==2:
+		for spec in performance_specs:
+			text_at(spec.label,Vector2(spec.x,spec.y),16)
+			text_at(spec.hint,Vector2(spec.x,spec.y+84),12,MUTED)
+		text_at("Current frame rate: %d FPS" % Engine.get_frames_per_second(),Vector2(374,669),15,ACCENT)
+		text_at("Try lower ball detail and shadows off first.",Vector2(746,669),12,MUTED)
+	if option_page==1: text_at("Stop at the first predicted contact.",Vector2(746,670),12,MUTED)
 	for spec in slider_specs:
 		if spec.get("page",0)!=option_page: continue
 		text_at(spec.label,Vector2(spec.x,spec.y),16)

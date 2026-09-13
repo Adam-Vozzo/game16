@@ -6,6 +6,7 @@ const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
 const THROW_SPEED := 6.4
 const DEFAULT_ROTATION_SPEED := 52.0
+const PERFORMANCE_DEFAULTS := {"ball_detail":2,"visual_rate":60,"shadows_enabled":true,"antialiasing":2,"merge_effects":2,"show_fps":false}
 var screen := Screen.MENU
 var options_return := Screen.MENU
 var reset_return := Screen.PAUSE
@@ -20,6 +21,16 @@ var paused: bool:
 var game_over := false
 var lab_mode := false
 var slow_motion := false
+var smart_trajectory := false
+var ball_detail := 2
+var visual_rate := 60
+var shadows_enabled := true
+var antialiasing := 2
+var merge_effects := 2
+var show_fps := false
+var key_light: DirectionalLight3D
+var visual_elapsed := 0.0
+var visual_dirty := true
 var material_index := 2
 var angle := 0.22
 var rotation_speed := DEFAULT_ROTATION_SPEED
@@ -79,6 +90,9 @@ func _ready() -> void:
 	if "--throw-options" in OS.get_cmdline_user_args():
 		hud.option_page=1
 		open_options()
+	if "--performance-options" in OS.get_cmdline_user_args():
+		hud.option_page=2
+		open_options()
 	if "--confirm-reset" in OS.get_cmdline_user_args():
 		set_screen(Screen.PAUSE)
 		request_new_bowl()
@@ -108,6 +122,7 @@ func _build_stage() -> void:
 	add_child(camera)
 	_update_camera()
 	var light := DirectionalLight3D.new()
+	key_light=light
 	light.rotation_degrees = Vector3(-53,-30,0)
 	light.light_color = Color("fff3dc")
 	light.light_energy = 0.65*light_scale
@@ -213,8 +228,8 @@ func _update_held() -> void:
 	var sphere := SphereMesh.new()
 	sphere.radius=SoftBall.RADII[queue[0]]
 	sphere.height=sphere.radius*2
-	sphere.radial_segments=32
-	sphere.rings=16
+	sphere.radial_segments=[12,20,32][ball_detail]
+	sphere.rings=[6,10,16][ball_detail]
 	held.mesh=sphere
 	held.material_override=SoftGeometry.cell_shell(SoftBall.COLORS[queue[0]])
 	held_core.mesh=sphere
@@ -304,6 +319,8 @@ func set_material(index: int) -> void:
 	hud.sync_options()
 
 func reset_options() -> void:
+	smart_trajectory=false
+	for setting in PERFORMANCE_DEFAULTS: set_performance_option(setting,PERFORMANCE_DEFAULTS[setting])
 	rotation_speed=DEFAULT_ROTATION_SPEED
 	min_elevation=MIN_ELEVATION
 	max_elevation=MAX_ELEVATION
@@ -320,11 +337,31 @@ func reset_options() -> void:
 	if lab_mode: toggle_lab()
 	set_material(2)
 
+func set_performance_option(key: String,value: Variant) -> void:
+	match key:
+		"ball_detail":
+			ball_detail=clampi(int(value),0,2)
+			sim.render_detail=ball_detail
+			_update_held()
+		"visual_rate": visual_rate=int(value) if int(value) in [0,30,60] else 60
+		"shadows_enabled":
+			shadows_enabled=bool(value)
+			key_light.shadow_enabled=shadows_enabled
+		"antialiasing":
+			antialiasing=clampi(int(value),0,2)
+			get_viewport().msaa_3d=antialiasing as Viewport.MSAA
+		"merge_effects":
+			merge_effects=clampi(int(value),0,2)
+			if merge_effects==0: hud.merge_stars.clear()
+		"show_fps": show_fps=bool(value)
+	hud.sync_options()
+
 func _physics_process(delta: float) -> void:
 	if not paused and not game_over:
 		simulation_accumulator+=delta*(0.25 if slow_motion else 1.0)
 		while simulation_accumulator>=1.0/60.0 and not paused:
 			sim.step(1.0/60.0)
+			visual_dirty=true
 			simulation_accumulator-=1.0/60.0
 
 func _process(delta: float) -> void:
@@ -335,7 +372,13 @@ func _process(delta: float) -> void:
 		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*deg_to_rad(rotation_speed))
 		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*trajectory_speed)
 		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): adjust_elevation(-delta*trajectory_speed)
-	for ball in sim.balls: ball.update_visual()
+	# Rebuilding deformed meshes is CPU-heavy. Limit visual refresh independently
+	# of the fixed physics steps; paused bowls need no repeated mesh uploads.
+	visual_elapsed+=delta
+	if visual_dirty and (visual_rate==0 or visual_elapsed>=1.0/visual_rate):
+		for ball in sim.balls: ball.update_visual()
+		visual_elapsed=fmod(visual_elapsed,1.0/visual_rate) if visual_rate>0 else 0.0
+		visual_dirty=false
 	held.position=launch
 	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
 	held.visible=show_aim and not game_over and cooldown<=0
@@ -352,9 +395,9 @@ func _process(delta: float) -> void:
 		_capture.call_deferred()
 
 func _update_aim() -> void:
-	var result := AimPreview.trace(sim,launch,_launch_velocity(),SoftBall.RADII[queue[0]])
+	var result := AimPreview.trace(sim,launch,_launch_velocity(),SoftBall.RADII[queue[0]],smart_trajectory)
 	var path: PackedVector3Array=result.path
-	# Even spacing along the sampled flight, stopping at the first shell contact.
+	# Normal mode ignores the pile; smart mode stops at the first shell contact.
 	for i in trajectory.size():
 		var sample := (path.size()-1)*(i+1)/float(trajectory.size())
 		var index := mini(int(sample),path.size()-2)

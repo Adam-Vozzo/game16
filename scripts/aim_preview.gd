@@ -6,7 +6,9 @@ extends RefCounted
 const DT := 1.0/180.0
 const SKIN := 0.018
 
-static func trace(sim: SoftSimulation,origin: Vector3,velocity: Vector3,radius: float) -> Dictionary:
+static func trace(sim: SoftSimulation,origin: Vector3,velocity: Vector3,radius: float,collide_with_balls: bool=true) -> Dictionary:
+	var obstacles: Array[SoftBall]=[]
+	if collide_with_balls: obstacles=sim.balls
 	var offsets := PackedVector3Array()
 	for vertex in sim.topology.vertices: offsets.append(vertex*radius)
 	var path := PackedVector3Array([origin])
@@ -16,7 +18,7 @@ static func trace(sim: SoftSimulation,origin: Vector3,velocity: Vector3,radius: 
 		var next := at+velocity*DT
 		var fraction := 2.0
 		var hit_ball: SoftBall
-		for ball in sim.balls:
+		for ball in obstacles:
 			if not ball.alive or not _touches_ball(next,offsets,radius,ball): continue
 			var low := 0.0
 			var high := 1.0

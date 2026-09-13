@@ -34,6 +34,7 @@ var mesh_instance: MeshInstance3D
 var core_instance: MeshInstance3D
 var render_edges := PackedVector3Array()
 var render_indices := PackedInt32Array()
+var render_detail := 2
 
 func _init(level: int, origin: Vector3, initial_velocity: Vector3, topology: Dictionary) -> void:
 	tier = clampi(level,0,RADII.size()-1)
@@ -151,8 +152,10 @@ func constrain(stiffness: float, recovery: float, weight: float = 1.0) -> void:
 			points[i] += offset/length*(radius-length)*recovery
 
 func _build_render_topology() -> void:
+	render_edges.clear()
+	render_indices.clear()
 	var refined := faces.duplicate()
-	for level in 2:
+	for level in render_detail:
 		var cache := {}
 		var next := PackedInt32Array()
 		for f in range(0,refined.size(),3):
@@ -171,6 +174,12 @@ func _build_render_topology() -> void:
 	# Godot uses clockwise front faces; the simulation uses outward CCW faces.
 	for f in range(0,refined.size(),3):
 		render_indices.append_array(PackedInt32Array([refined[f],refined[f+2],refined[f+1]]))
+
+func set_render_detail(detail: int) -> void:
+	if render_detail==detail: return
+	render_detail=clampi(detail,0,2)
+	_build_render_topology()
+	update_visual()
 
 func create_visual(parent: Node3D) -> void:
 	mesh_instance = MeshInstance3D.new()

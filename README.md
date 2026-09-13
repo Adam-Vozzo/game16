@@ -22,7 +22,7 @@ Open `project.godot` in **Godot 4.6+** and press **F5**. The regular Godot build
 
 A local standalone Windows build is available at `build/SoftMountain.exe` after exporting the **Windows Desktop** preset. Builds are excluded from source control. The prototype was developed and tested with Godot 4.6.1; the local executable is exported with the installed Godot 4.7.2 templates.
 
-The main menu offers **Play** and **Options**. Play starts a bowl with three different tiers. Rotate around the bowl with A/D, raise or lower the throw angle with W/S, then click or press Space to toss immediately. Mouse position and hold duration do not affect the throw. The camera views the throw from a slight side angle to keep its arc readable as you orbit. The outlined dotted arc stops at the first predicted contact with the current pile or bowl. It uses the thrown ball's shell size, the deformed target cages, and the solver's airborne timestep. A short lead-in connects the center path to a marker on the contact surface. Balls hide the parts of the guide behind them, and crowded dots share one outside outline. This is a snapshot estimate: it does not simulate the pile's future movement, post-impact deformation, or bounces. Same-tier contact creates the next larger tier and awards points, which float up from the merge and fade away alongside a burst of yellow stars with pink and purple trails. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
+The main menu offers **Play** and **Options**. Play starts a bowl with three different tiers. Rotate around the bowl with A/D, raise or lower the throw angle with W/S, then click or press Space to toss immediately. Mouse position and hold duration do not affect the throw. The camera views the throw from a slight side angle to keep its arc readable as you orbit. The outlined dotted arc continues through the pile to the bowl by default. Sections inside or behind balls fade to 18% opacity, and crowded dots share one outside outline without opacity building up. Enable **Smart trajectory** in **Options → Throw & camera** to stop at the first predicted ball contact instead. Smart mode uses the thrown shell size and deformed target cages, with a marker on the contact surface; it is a snapshot estimate that does not simulate the pile's future movement or bounces. Same-tier contact creates the next larger tier and awards points, which float up from the merge and fade away alongside a burst of yellow stars with pink and purple trails. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
 
 | Input | Action |
 | --- | --- |
@@ -40,11 +40,17 @@ Weight changes mass and the response of the elastic constraints, so greater weig
 
 Pause, Options, and the New bowl confirmation freeze physics and block gameplay input. New bowl warns that the current score and balls will be cleared; Cancel or Escape keeps the round intact. Closing Options returns to the menu that opened it. In gameplay, score is centered at the top, the tier ladder ascends along the left, and upcoming throws sit on the right; controls stay at the bottom.
 
-Options has two tabs. **Material & lab** contains the soft-body controls. **Throw & camera** adds minimum/maximum trajectory angles (within −35° to 80°, with at least a 5° gap), trajectory adjustment speed (5–100°/s), launch speed (2–12 m/s), camera height angle (20–70°), camera side offset (−65° to 65°), and rotation speed. Launch speed changes flight distance; W/S operates within the selected angle range. Camera settings affect the view without steering the shot. All settings persist between bowls for the current session and can be restored with Reset defaults.
+Options has three tabs. **Material & lab** contains the soft-body controls. **Throw & camera** adds minimum/maximum trajectory angles (within −35° to 80°, with at least a 5° gap), trajectory adjustment speed (5–100°/s), launch speed (2–12 m/s), camera height angle (20–70°), camera side offset (−65° to 65°), rotation speed, and the Smart trajectory toggle (off by default). Launch speed changes flight distance; W/S operates within the selected angle range. Camera settings affect the view without steering the shot. All settings persist between bowls for the current session and can be restored with Reset defaults.
 
 ![Material and motion options](docs/options.png)
 
 ![Throw and camera options](docs/throw-options.png)
+
+**Performance** provides ball detail (Low / Medium / High), ball animation refresh (30 Hz / 60 Hz / every frame), shadows, edge smoothing (Off / 2× / 4×), merge effects (Off / Reduced / Full), and an optional gameplay FPS counter. Defaults retain High detail, 60 Hz animation, shadows, 4× smoothing and Full effects. Settings apply immediately to existing and new balls and persist between bowls for the session. Start with lower ball detail and shadows off on slower devices. The FPS reading inside Options measures the paused menu; enable the gameplay counter to compare performance during play.
+
+Low, Medium and High meshes use 42 / 162 / 642 vertices and 80 / 320 / 1,280 triangles per layer. Animation refresh limits CPU mesh rebuilding without changing the 180 Hz physics solver, collisions, or merging. Unchanged paused meshes are not rebuilt. Reduced effects use six stars without trails; Off retains floating score feedback. These controls reduce rendering work, but a crowded bowl can still be limited by the GDScript physics solver.
+
+![Performance options](docs/performance-options.png)
 
 ## Soft-body implementation
 
@@ -79,6 +85,7 @@ godot --headless --path . --script res://tests/physics_tests.gd
 godot --headless --path . --script res://tests/merge_tests.gd
 godot --headless --path . --script res://tests/ui_tests.gd
 godot --headless --path . --script res://tests/aim_tests.gd
+godot --headless --path . --script res://tests/performance_tests.gd
 ```
 
 Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world. Merge regressions cover grounded merges across all presets, crowded contacts, inherited airborne movement, and expiry of the settling guard.
