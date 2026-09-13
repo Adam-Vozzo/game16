@@ -1,6 +1,6 @@
 extends Node3D
 
-enum Screen { MENU, PLAY, PAUSE, OPTIONS, GAME_OVER, CONFIRM_RESET }
+enum Screen { MENU, PLAY, PAUSE, OPTIONS, GAME_OVER, CONFIRM_RESET, DEV_TWEAKS }
 const MATERIALS := [[0.22,0.008,0.045],[0.30,0.003,0.12],[0.10,0.004,0.085]]
 const MIN_ELEVATION := -12.0
 const MAX_ELEVATION := 68.0
@@ -88,10 +88,14 @@ func _ready() -> void:
 		restart()
 	if "--options" in OS.get_cmdline_user_args(): open_options()
 	if "--throw-options" in OS.get_cmdline_user_args():
-		hud.option_page=1
-		open_options()
+		set_screen(Screen.PAUSE)
+		hud.dev_page=1
+		open_dev_tweaks()
+	if "--dev-tweaks" in OS.get_cmdline_user_args():
+		set_screen(Screen.PAUSE)
+		open_dev_tweaks()
+	if "--pause-menu" in OS.get_cmdline_user_args(): set_screen(Screen.PAUSE)
 	if "--performance-options" in OS.get_cmdline_user_args():
-		hud.option_page=2
 		open_options()
 	if "--confirm-reset" in OS.get_cmdline_user_args():
 		set_screen(Screen.PAUSE)
@@ -193,7 +197,14 @@ func set_screen(value: Screen) -> void:
 func open_options() -> void:
 	if screen==Screen.OPTIONS: return
 	options_return=screen
+	hud.option_page=2
 	set_screen(Screen.OPTIONS)
+
+func open_dev_tweaks() -> void:
+	if screen!=Screen.PAUSE: return
+	options_return=Screen.PAUSE
+	hud.option_page=hud.dev_page
+	set_screen(Screen.DEV_TWEAKS)
 
 func close_options() -> void:
 	set_screen(options_return)
@@ -298,7 +309,7 @@ func toggle_pause() -> void:
 	match screen:
 		Screen.PLAY: set_screen(Screen.PAUSE)
 		Screen.PAUSE: set_screen(Screen.PLAY)
-		Screen.OPTIONS: close_options()
+		Screen.OPTIONS,Screen.DEV_TWEAKS: close_options()
 		Screen.CONFIRM_RESET: cancel_new_bowl()
 
 func toggle_lab() -> void:
@@ -319,8 +330,10 @@ func set_material(index: int) -> void:
 	hud.sync_options()
 
 func reset_options() -> void:
-	smart_trajectory=false
 	for setting in PERFORMANCE_DEFAULTS: set_performance_option(setting,PERFORMANCE_DEFAULTS[setting])
+
+func reset_dev_tweaks() -> void:
+	smart_trajectory=false
 	rotation_speed=DEFAULT_ROTATION_SPEED
 	min_elevation=MIN_ELEVATION
 	max_elevation=MAX_ELEVATION
@@ -380,7 +393,7 @@ func _process(delta: float) -> void:
 		visual_elapsed=fmod(visual_elapsed,1.0/visual_rate) if visual_rate>0 else 0.0
 		visual_dirty=false
 	held.position=launch
-	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
+	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET,Screen.DEV_TWEAKS] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
 	held.visible=show_aim and not game_over and cooldown<=0
 	aim_visible=show_aim and not game_over
 	if aim_visible: _update_aim()

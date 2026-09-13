@@ -18,8 +18,7 @@ func run() -> void:
 	game.set_physics_process(false)
 	game.hud.set_process(false)
 	game.open_options()
-	game.hud.option_tabs[2].pressed.emit()
-	check(game.hud.performance_buttons.ball_detail.visible and not game.hud.smart_button.visible and not game.hud.sliders.weight_scale.visible,"Performance has its own tab in the shared Options modal")
+	check(game.hud.performance_buttons.ball_detail.visible and not game.hud.smart_button.visible and not game.hud.sliders.weight_scale.visible,"Options shows performance without development controls")
 	var ball: SoftBall=game.sim.balls[0]
 	var points := ball.points.duplicate()
 	var previous := ball.previous.duplicate()
@@ -55,7 +54,9 @@ func run() -> void:
 	game.hud.show_merge_stars(Vector3.ZERO,2)
 	game.hud.show_score(Vector3.ZERO,40,Color.WHITE)
 	check(game.hud.merge_stars.is_empty() and game.hud.score_popups.size()==1,"Effects Off removes stars while retaining score feedback")
+	game.set_play_option("throw_speed",8.0)
 	game.reset_options()
+	check(game.throw_speed==8.0,"Resetting Options preserves development tweaks")
 	check(game.ball_detail==2 and game.sim.render_detail==2 and game.visual_rate==60 and game.key_light.shadow_enabled and root.msaa_3d==Viewport.MSAA_4X and game.merge_effects==2 and not game.show_fps,"Reset defaults restores all performance controls and renderer state")
 	# Rendering detail must not change the solver's result.
 	var high := SoftSimulation.new()

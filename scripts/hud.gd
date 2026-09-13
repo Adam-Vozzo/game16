@@ -15,6 +15,7 @@ var options_controls: Control
 var end_controls: Control
 var reset_controls: Control
 var option_page := 0
+var dev_page := 0
 var option_tabs: Array[Button] = []
 var material_buttons: Array[Button] = []
 var sliders: Dictionary = {}
@@ -75,8 +76,9 @@ func _ready() -> void:
 	pause_controls=_group(modal_blocker)
 	_button(pause_controls,"Resume",Rect2(558,359,324,54),func(): game.toggle_pause(),true,18)
 	_button(pause_controls,"Options",Rect2(558,428,324,48),func(): game.open_options(),false,16)
-	_button(pause_controls,"New bowl",Rect2(558,491,324,48),func(): game.request_new_bowl(),false,16)
-	_button(pause_controls,"Main menu",Rect2(558,554,324,48),func(): game.show_main_menu(),false,16)
+	_button(pause_controls,"Dev tweaks",Rect2(558,491,324,48),func(): game.open_dev_tweaks(),false,16)
+	_button(pause_controls,"New bowl",Rect2(558,554,324,48),func(): game.request_new_bowl(),false,16)
+	_button(pause_controls,"Main menu",Rect2(558,617,324,48),func(): game.show_main_menu(),false,16)
 	end_controls=_group(modal_blocker)
 	_button(end_controls,"New bowl",Rect2(558,405,324,54),func(): game.request_new_bowl(),true,18)
 	_button(end_controls,"Options",Rect2(558,474,324,48),func(): game.open_options(),false,16)
@@ -86,9 +88,9 @@ func _ready() -> void:
 	_button(reset_controls,"Reset round",Rect2(734,482,198,52),func(): game.restart(),true,16)
 	options_controls=_group(modal_blocker)
 	_button(options_controls,"×",Rect2(1042,105,40,40),func(): game.close_options(),false,24)
-	for i in 3:
+	for i in 2:
 		var page := i
-		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera","Performance"][i],Rect2(374+i*236,194,226,42),func(): option_page=page; sync_options(),false,16))
+		option_tabs.append(_button(options_controls,["Material & lab","Throw & camera"][i],Rect2(374+i*356,194,342,42),func(): dev_page=page; option_page=page; sync_options(),false,16))
 	for i in 3:
 		var index := i
 		material_buttons.append(_button(options_controls,["Balloon","Foam","Dough"][i],Rect2(374+i*232,254,218,43),func(): game.set_material(index),false,16))
@@ -108,7 +110,9 @@ func _ready() -> void:
 			game.set_performance_option(setting.key,setting.values[(current+1)%setting.values.size()]),false,16)
 		button.tooltip_text=spec.hint
 		performance_buttons[spec.key]=button
-	_button(options_controls,"Reset defaults",Rect2(374,751,172,43),func(): game.reset_options(),false,14)
+	_button(options_controls,"Reset defaults",Rect2(374,751,172,43),func():
+		if game.screen==game.Screen.DEV_TWEAKS: game.reset_dev_tweaks()
+		else: game.reset_options(),false,14)
 	_button(options_controls,"Done",Rect2(909,751,163,43),func(): game.close_options(),true,16)
 	sync_screen()
 	sync_options()
@@ -173,9 +177,9 @@ func sync_screen() -> void:
 	if not is_instance_valid(menu_controls): return
 	menu_controls.visible=game.screen==game.Screen.MENU
 	play_controls.visible=game.screen==game.Screen.PLAY
-	modal_blocker.visible=game.screen in [game.Screen.PAUSE,game.Screen.OPTIONS,game.Screen.GAME_OVER,game.Screen.CONFIRM_RESET]
+	modal_blocker.visible=game.screen in [game.Screen.PAUSE,game.Screen.OPTIONS,game.Screen.DEV_TWEAKS,game.Screen.GAME_OVER,game.Screen.CONFIRM_RESET]
 	pause_controls.visible=game.screen==game.Screen.PAUSE
-	options_controls.visible=game.screen==game.Screen.OPTIONS
+	options_controls.visible=game.screen in [game.Screen.OPTIONS,game.Screen.DEV_TWEAKS]
 	end_controls.visible=game.screen==game.Screen.GAME_OVER
 	reset_controls.visible=game.screen==game.Screen.CONFIRM_RESET
 	var focus := get_viewport().gui_get_focus_owner()
@@ -189,7 +193,9 @@ func _option_owner(key: String) -> Object:
 func sync_options() -> void:
 	for key in sliders: sliders[key].set_value_no_signal(_option_owner(key).get(key))
 	for spec in slider_specs: sliders[spec.key].visible=spec.get("page",0)==option_page
-	for i in option_tabs.size(): option_tabs[i].modulate=ACCENT if i==option_page else Color.WHITE
+	for i in option_tabs.size():
+		option_tabs[i].visible=game.screen==game.Screen.DEV_TWEAKS
+		option_tabs[i].modulate=ACCENT if i==option_page else Color.WHITE
 	for i in material_buttons.size():
 		material_buttons[i].visible=option_page==0
 		material_buttons[i].modulate=ACCENT if i==game.material_index else Color.WHITE
@@ -267,14 +273,14 @@ func _draw() -> void:
 	if modal_blocker.visible:
 		draw_rect(Rect2(0,0,1440,900),Color(0.018,0.035,0.045,0.77))
 		match game.screen:
-			game.Screen.OPTIONS: _draw_options()
+			game.Screen.OPTIONS,game.Screen.DEV_TWEAKS: _draw_options()
 			game.Screen.CONFIRM_RESET:
 				panel(Rect2(460,290,520,292),PANEL,24)
 				centered("Start a new bowl?",Vector2(720,354),32)
 				centered("This will reset the current round.",Vector2(720,400),17)
 				centered("Your score and all balls will be cleared.",Vector2(720,430),14,MUTED)
 			game.Screen.PAUSE:
-				panel(Rect2(504,230,432,424),PANEL,24)
+				panel(Rect2(504,230,432,487),PANEL,24)
 				centered("Paused",Vector2(720,298),36)
 				centered("Your bowl can wait.",Vector2(720,330),15,MUTED)
 			game.Screen.GAME_OVER:
@@ -417,9 +423,11 @@ func _cell_icon(at: Vector2,radius: float,color: Color) -> void:
 
 func _draw_options() -> void:
 	panel(Rect2(326,80,788,749),PANEL,24)
-	text_at("Options",Vector2(374,141),36)
-	text_at("Shape the way things feel.",Vector2(376,172),15,MUTED)
+	var dev: bool=game.screen==game.Screen.DEV_TWEAKS
+	text_at("Dev tweaks" if dev else "Options",Vector2(374,141),36)
+	text_at("Shape the way things feel." if dev else "Performance and display.",Vector2(376,172),15,MUTED)
 	if option_page==2:
+		text_at("Performance",Vector2(374,222),20,ACCENT)
 		for spec in performance_specs:
 			text_at(spec.label,Vector2(spec.x,spec.y),16)
 			text_at(spec.hint,Vector2(spec.x,spec.y+84),12,MUTED)
