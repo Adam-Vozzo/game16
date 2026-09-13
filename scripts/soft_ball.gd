@@ -37,6 +37,7 @@ var render_edges := PackedVector3Array()
 var render_indices := PackedInt32Array()
 var render_detail := 2
 var render_colors := PackedColorArray()
+var rendered_points := PackedVector3Array()
 
 func _init(level: int, origin: Vector3, initial_velocity: Vector3, topology: Dictionary) -> void:
 	tier = clampi(level,0,RADII.size()-1)
@@ -188,6 +189,7 @@ func set_render_detail(detail: int) -> void:
 	if render_detail==detail: return
 	render_detail=clampi(detail,0,2)
 	_build_render_topology()
+	rendered_points.clear()
 	update_visual()
 
 func create_visual(parent: Node3D) -> void:
@@ -203,6 +205,16 @@ func create_visual(parent: Node3D) -> void:
 
 func update_visual() -> void:
 	if not is_instance_valid(mesh_instance): return
+	# Ignore sub-pixel settling jitter; retain the last uploaded mesh until any
+	# cage point moves visibly. Cumulative drift is measured against that upload.
+	if rendered_points.size()==points.size() and mesh_instance.mesh!=null:
+		var changed := false
+		var threshold := radius*0.001
+		for i in points.size():
+			if points[i].distance_squared_to(rendered_points[i])>threshold*threshold:
+				changed=true
+				break
+		if not changed: return
 	var vertices := points.duplicate()
 	for i in vertices.size(): vertices[i]-=center
 	for e in render_edges:
@@ -235,6 +247,7 @@ func update_visual() -> void:
 	# by each ball's actual location. The core is visual, not a rigid collider.
 	mesh_instance.position=center
 	core_instance.mesh=mesh
+	rendered_points=points.duplicate()
 
 func dispose() -> void:
 	alive = false

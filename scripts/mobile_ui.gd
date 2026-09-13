@@ -9,11 +9,17 @@ var pause_button: Button
 var values: Dictionary = {}
 var buttons: Dictionary = {}
 var rebuilding := false
+var dock_style: StyleBoxFlat
+var control_styles: Dictionary = {}
 
 func _ready() -> void:
 	set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
 	mouse_filter=Control.MOUSE_FILTER_IGNORE
 	get_window().focus_exited.connect(release_all)
+	dock_style=host._style(Color("111f35"),Color("31464b"))
+	for key in ["left","right","lower","raise","toss"]:
+		var color: Color=host.ACCENT if key=="toss" else Color("20363c")
+		control_styles[key]=[host._style(color,Color("547680")),host._style(color.lightened(0.18),Color("547680"))]
 	sync_screen()
 
 func release_all() -> void: pointers.clear()
@@ -79,7 +85,6 @@ func apply_holds(delta: float) -> void:
 
 func _process(_delta: float) -> void:
 	if not visible: return
-	layout_zones()
 	queue_redraw()
 
 func label(text: String,font_size: int=16,color: Color=Color("edf2ec")) -> Label:
@@ -240,13 +245,11 @@ func _draw() -> void:
 	for i in 3: draw_circle(Vector2(size.x*0.5-22+i*22,35),7-i,SoftBall.COLORS[game.queue[i]])
 	for i in 8: draw_circle(Vector2(14,size.y-dock_height()-18-i*20),4+i*0.4,SoftBall.COLORS[i])
 	if game.show_fps: draw_string(font,Vector2(16,78),"%d FPS" % Engine.get_frames_per_second(),HORIZONTAL_ALIGNMENT_LEFT,-1,12,host.MUTED)
-	draw_style_box(host._style(Color("111f35"),Color("31464b")),Rect2(0,size.y-dock_height(),size.x,dock_height()))
+	draw_style_box(dock_style,Rect2(0,size.y-dock_height(),size.x,dock_height()))
 	var down := pointers.values()
 	for key in zones:
 		var rect: Rect2=zones[key]
-		var color: Color=host.ACCENT if key=="toss" else Color("20363c")
-		if key in down: color=color.lightened(0.18)
-		draw_style_box(host._style(color,Color("547680")),rect)
+		draw_style_box(control_styles[key][int(key in down)],rect)
 		if key!="toss":
 			_draw_control_icon(key,rect.get_center())
 			continue

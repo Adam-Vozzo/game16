@@ -24,6 +24,10 @@ The browser switches to a touch layout at 900 CSS pixels wide, or up to 1100 pix
 
 Portrait uses two rows of large controls, and landscape uses one row. The camera fits the bowl above the controls. Score, upcoming colours and the tier guide use a compact HUD, and all menus reflow into readable, scrollable phone panels. Bottom safe-area spacing keeps controls away from the home indicator. Returning to a desktop-sized window restores the desktop HUD without restarting the round.
 
+Phones now start with Medium ball detail, 30 Hz mesh animation, shadows and MSAA off, Reduced merge effects, a 60 FPS cap, and 50% 3D resolution. Half resolution renders one quarter as many 3D pixels; the HUD stays at full resolution. These defaults apply once on entering mobile mode, and Reset defaults restores the mobile budget. Manual choices persist across rotations and new bowls. **Options → Performance** exposes 30 / 60 FPS / display refresh and 50 / 75 / 100% 3D resolution. Choose 30 FPS to further reduce sustained load.
+
+Idle rendering reuses the last ball mesh while cage changes remain below 0.1% of its radius, caches the normal trajectory until launch or physics settings change, retains touch-control styles, and avoids switching every living light off and on each frame. Physics, collisions, and merging still run at their original fixed timestep. A 65-second three-ball Compatibility-renderer test (`tests/idle_stress_tests.gd`) sampled stable object/resource counts and one trajectory trace; this is a desktop test, not a measurement of iPhone temperature or Safari performance.
+
 Native layout previews: `godot --path . --resolution 390x844 -- --mobile --demo` or `--resolution 844x390` for landscape. The browser chooses the layout automatically. Automated checks include simultaneous touches, release-to-toss, canceled drags, duplicate mouse events, modal isolation, settings, and layout changes (`tests/mobile_tests.gd`). Physical iOS/Android hardware has not been tested.
 
 ## Tidal Glow experiment

@@ -40,10 +40,20 @@ func run() -> void:
 	game.visual_elapsed=0.0
 	game.visual_dirty=true
 	var mesh := ball.mesh_instance.mesh
+	ball.points[0]+=Vector3.UP*0.01
 	game._process(1.0/60.0)
 	check(ball.mesh_instance.mesh==mesh,"30 Hz animation avoids an unnecessary mesh rebuild at 60 Hz")
 	game._process(1.0/60.0)
 	check(ball.mesh_instance.mesh!=mesh,"30 Hz animation refreshes when its interval elapses")
+	mesh=ball.mesh_instance.mesh
+	ball.update_visual()
+	check(ball.mesh_instance.mesh==mesh,"Unchanged cage retains its GPU mesh")
+	ball.points[0]+=Vector3.UP*ball.radius*0.0001
+	ball.update_visual()
+	check(ball.mesh_instance.mesh==mesh,"Sub-pixel settling jitter does not churn GPU meshes")
+	ball.points[0]+=Vector3.UP*0.01
+	ball.update_visual()
+	check(ball.mesh_instance.mesh!=mesh,"Visible deformation refreshes the mesh immediately")
 	mesh=ball.mesh_instance.mesh
 	game.toggle_pause()
 	game._process(1.0)
@@ -67,6 +77,25 @@ func run() -> void:
 		sim.spawn(0,Vector3(0.15,2.2,0))
 		for frame in 40: sim.step(1.0/60.0)
 	check(high.balls[0].points==low.balls[0].points and high.balls[1].points==low.balls[1].points,"High and Low detail produce identical simulated collisions")
+	game.restart()
+	game._update_camera()
+	game._update_aim()
+	var trace_count: int=game.aim_trace_count
+	for i in 120: game._update_aim()
+	check(game.aim_trace_count==trace_count,"An unchanged normal trajectory is traced once, not every frame")
+	game.adjust_elevation(1)
+	game._update_aim()
+	check(game.aim_trace_count==trace_count+1,"Changing aim invalidates the trajectory cache")
+	game.apply_mobile_defaults()
+	check(game.ball_detail==1 and game.visual_rate==30 and not game.shadows_enabled and game.antialiasing==0 and Engine.max_fps==60 and root.scaling_3d_scale==0.5,"Phone defaults reduce CPU and GPU load while keeping physics intact")
+	game.set_performance_option("frame_limit",30)
+	check(Engine.max_fps==30,"Low-power frame limit changes the live engine")
+	game.mobile_mode=true
+	game.reset_options()
+	check(game.frame_limit==60 and game.render_scale==0.5 and not game.shadows_enabled,"Reset on a phone restores the phone budget")
+	game.set_performance_option("frame_limit",30)
+	game.restart()
+	check(game.frame_limit==30,"New rounds preserve the chosen frame limit")
 	game.free()
 	print("PERFORMANCE RESULT: ",checks-failures,"/",checks," passed")
 	quit(0 if failures==0 else 1)

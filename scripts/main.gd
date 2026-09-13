@@ -74,6 +74,11 @@ var capture_name := "prototype"
 var mobile_mode := false
 var mobile_view := Vector2i.ZERO
 var mobile_safe_bottom := 0.0
+var mobile_defaults_applied := false
+var frame_limit := 0
+var render_scale := 1.0
+var aim_cache_key: Array = []
+var aim_trace_count := 0
 
 func _ready() -> void:
 	desktop_effects=RenderingServer.get_current_rendering_method()=="forward_plus"
@@ -141,10 +146,18 @@ func _refresh_mobile_layout() -> void:
 	if enabled==mobile_mode and (not enabled or view==mobile_view): return
 	mobile_mode=enabled
 	mobile_view=view
+	if enabled and not mobile_defaults_applied:
+		mobile_defaults_applied=true
+		apply_mobile_defaults()
 	get_window().content_scale_size=view if enabled else Vector2i(1440,900)
 	get_window().content_scale_aspect=Window.CONTENT_SCALE_ASPECT_EXPAND if enabled else Window.CONTENT_SCALE_ASPECT_KEEP
 	_update_camera()
 	if is_instance_valid(hud): hud.sync_screen()
+
+func apply_mobile_defaults() -> void:
+	# A phone gets a sustained-load budget, rather than desktop visual defaults.
+	for pair in [["ball_detail",1],["visual_rate",30],["shadows_enabled",false],["antialiasing",0],["merge_effects",1],["frame_limit",60],["render_scale",0.5]]:
+		set_performance_option(pair[0],pair[1])
 
 func _finish_web_loading() -> void:
 	await RenderingServer.frame_post_draw
@@ -403,6 +416,9 @@ func reset_options() -> void:
 		var value: Variant=PERFORMANCE_DEFAULTS[setting]
 		if not desktop_effects and setting=="lighting_quality": value=1
 		set_performance_option(setting,value)
+	set_performance_option("frame_limit",0)
+	set_performance_option("render_scale",1.0)
+	if mobile_mode: apply_mobile_defaults()
 
 func reset_dev_tweaks() -> void:
 	smart_trajectory=false
@@ -424,6 +440,12 @@ func reset_dev_tweaks() -> void:
 
 func set_performance_option(key: String,value: Variant) -> void:
 	match key:
+		"frame_limit":
+			frame_limit=int(value) if int(value) in [0,30,60] else 60
+			Engine.max_fps=frame_limit
+		"render_scale":
+			render_scale=clampf(float(value),0.5,1.0)
+			get_viewport().scaling_3d_scale=render_scale
 		"ball_glow":
 			ball_glow=clampf(float(value),0.0,5.0)
 			RenderingServer.global_shader_parameter_set("tidal_emission",ball_glow)
@@ -505,6 +527,12 @@ func _process(delta: float) -> void:
 		_capture.call_deferred()
 
 func _update_aim() -> void:
+	# The normal arc passes through balls, so only launch/physics settings can
+	# change it. Occlusion is still drawn against the current deforming bodies.
+	var key: Array=[launch,_launch_velocity(),queue[0],sim.gravity,sim.bowl_enabled,sim.floor_height,smart_trajectory]
+	if not smart_trajectory and key==aim_cache_key: return
+	aim_cache_key=key
+	aim_trace_count+=1
 	var result := AimPreview.trace(sim,launch,_launch_velocity(),SoftBall.RADII[queue[0]],smart_trajectory)
 	var path: PackedVector3Array=result.path
 	# Normal mode ignores the pile; smart mode stops at the first shell contact.

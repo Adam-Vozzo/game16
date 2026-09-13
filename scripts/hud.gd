@@ -27,12 +27,14 @@ var aim_layers: Array[Node2D] = []
 var aim_groups: Array[CanvasGroup] = []
 var performance_buttons: Dictionary = {}
 var performance_specs := [
-	{"key":"ball_detail","label":"Ball detail","choices":["Low","Medium","High"],"values":[0,1,2],"hint":"Simpler surfaces reduce mesh-building work.","x":374,"y":282},
-	{"key":"visual_rate","label":"Ball animation","choices":["30 Hz","60 Hz","Every frame"],"values":[30,60,0],"hint":"Visual refresh only; physics stays the same.","x":746,"y":282},
-	{"key":"shadows_enabled","label":"Shadows","choices":["Off","On"],"values":[false,true],"hint":"Turn off cast shadows to ease GPU load.","x":374,"y":410},
-	{"key":"antialiasing","label":"Edge smoothing","choices":["Off","2×","4×"],"values":[0,1,2],"hint":"Lower settings reduce GPU work.","x":746,"y":410},
-	{"key":"merge_effects","label":"Merge effects","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Fewer stars and simpler trails.","x":374,"y":538},
-	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":538},
+	{"key":"frame_limit","label":"Frame limit","choices":["60 FPS","30 FPS","Display refresh"],"values":[60,30,0],"hint":"30 FPS uses less power on phones.","x":374,"y":260},
+	{"key":"render_scale","label":"3D resolution","choices":["50%","75%","100%"],"values":[0.5,0.75,1.0],"hint":"Lower resolution; menus stay sharp.","x":746,"y":260},
+	{"key":"ball_detail","label":"Ball detail","choices":["Low","Medium","High"],"values":[0,1,2],"hint":"Simpler surfaces reduce mesh-building work.","x":374,"y":360},
+	{"key":"visual_rate","label":"Ball animation","choices":["30 Hz","60 Hz","Every frame"],"values":[30,60,0],"hint":"Visual refresh only; physics stays the same.","x":746,"y":360},
+	{"key":"shadows_enabled","label":"Shadows","choices":["Off","On"],"values":[false,true],"hint":"Turn off cast shadows to ease GPU load.","x":374,"y":460},
+	{"key":"antialiasing","label":"Edge smoothing","choices":["Off","2×","4×"],"values":[0,1,2],"hint":"Lower settings reduce GPU work.","x":746,"y":460},
+	{"key":"merge_effects","label":"Merge effects","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Fewer stars and simpler trails.","x":374,"y":560},
+	{"key":"show_fps","label":"FPS counter","choices":["Off","On"],"values":[false,true],"hint":"Show the frame rate during play.","x":746,"y":560},
 	{"key":"lighting_quality","label":"Living lights","choices":["Off","Reduced","Full"],"values":[0,1,2],"hint":"Cells and merges illuminate their surroundings.","x":374,"y":282,"page":3},
 	{"key":"sss_enabled","label":"Subsurface scattering","choices":["Off","On"],"values":[false,true],"hint":"Soft light diffusion through the inner tissue.","x":746,"y":282,"page":3,"desktop":true},
 	{"key":"bloom_enabled","label":"Bloom","choices":["Off","On"],"values":[false,true],"hint":"","x":374,"y":588,"page":4,"desktop":true}]

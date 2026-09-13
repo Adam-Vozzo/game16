@@ -36,8 +36,9 @@ func update(delta: float) -> void:
 			pulses[i].age+=dt
 			if pulses[i].age>=0.85: pulses.remove_at(i)
 	RenderingServer.global_shader_parameter_set("tidal_time",time)
-	for lamp in lamps: lamp.visible=false
-	if game.lighting_quality==0 or game.ball_light_strength<=0.0: return
+	if game.lighting_quality==0 or game.ball_light_strength<=0.0:
+		for lamp in lamps: lamp.visible=false
+		return
 	var budget := lamps.size()
 	if game.lighting_quality==1: budget=DESKTOP_REDUCED_CAP if game.desktop_effects else 2
 	var cursor := 0
@@ -54,6 +55,7 @@ func update(delta: float) -> void:
 		var breath := 0.88+sin(time*1.7+ball.tier)*0.12
 		_place(cursor,ball.center+Vector3.UP*ball.radius*0.4,SoftBall.COLORS[ball.tier],0.65*breath,ball.radius*1.7+1.5)
 		cursor+=1
+	for i in range(cursor,lamps.size()): lamps[i].visible=false
 
 func _place(index: int,at: Vector3,color: Color,energy: float,radius: float) -> void:
 	var lamp := lamps[index]
