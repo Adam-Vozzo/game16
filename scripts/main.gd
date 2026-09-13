@@ -36,9 +36,9 @@ var throw_elevation := 24.0
 var cooldown := 0.0
 var held: MeshInstance3D
 var held_core: MeshInstance3D
-var target_ring: MeshInstance3D
-var trajectory: Array[MeshInstance3D] = []
-var effects: Array[Dictionary] = []
+var aim_visible := false
+var landing_marker := Vector3.ZERO
+var trajectory := PackedVector3Array()
 var sound: AudioStreamPlayer
 var screenshot_frame := -1
 var frame := 0
@@ -82,13 +82,17 @@ func _ready() -> void:
 		request_new_bowl()
 
 func _build_stage() -> void:
+	# Compatibility (including WebGL) produces a brighter result from the same
+	# light energies. Keep its exposure close to the original Forward+ scene.
+	var compatibility := RenderingServer.get_current_rendering_method()=="gl_compatibility"
+	var light_scale := 0.55 if compatibility else 1.0
 	var environment := WorldEnvironment.new()
 	var env := Environment.new()
 	env.background_mode = Environment.BG_COLOR
 	env.background_color = Color("0e1b23")
 	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
 	env.ambient_light_color = Color("b8d8df")
-	env.ambient_light_energy = 0.28
+	env.ambient_light_energy = 0.28*light_scale
 	env.tonemap_mode = Environment.TONE_MAPPER_FILMIC
 	env.ssao_enabled = true
 	env.ssao_radius = 1.0
@@ -104,15 +108,16 @@ func _build_stage() -> void:
 	var light := DirectionalLight3D.new()
 	light.rotation_degrees = Vector3(-53,-30,0)
 	light.light_color = Color("fff3dc")
-	light.light_energy = 0.65
+	light.light_energy = 0.65*light_scale
 	light.shadow_enabled = true
+	light.shadow_opacity = 0.8 if compatibility else 1.0
 	light.light_angular_distance = 1.5
 	light.directional_shadow_max_distance = 30
 	add_child(light)
 	var fill := OmniLight3D.new()
 	fill.position = Vector3(-5,6,-3)
 	fill.light_color = Color("96c9d5")
-	fill.light_energy = 0.45
+	fill.light_energy = 0.45*light_scale
 	fill.omni_range = 15
 	add_child(fill)
 	var ground := MeshInstance3D.new()
@@ -120,7 +125,7 @@ func _build_stage() -> void:
 	plane.size = Vector2(200,200)
 	ground.mesh = plane
 	ground.position.y = -0.72
-	ground.material_override = SoftGeometry.material(Color("132730"),0.86)
+	ground.material_override = SoftGeometry.material(Color("213133") if compatibility else Color("132730"),0.86)
 	add_child(ground)
 	var pedestal := MeshInstance3D.new()
 	var cylinder := CylinderMesh.new()
@@ -150,22 +155,7 @@ func _build_stage() -> void:
 	held_core=MeshInstance3D.new()
 	held_core.scale=Vector3.ONE*0.76
 	held.add_child(held_core)
-	target_ring = _ring(0.27,0.015,Color("d3ecd0"))
-	add_child(target_ring)
-	for i in 22:
-		var dot := MeshInstance3D.new()
-		var sphere := SphereMesh.new()
-		sphere.radius = 0.024 if i%3 else 0.036
-		sphere.height = sphere.radius*2
-		sphere.radial_segments = 8
-		sphere.rings = 4
-		dot.mesh = sphere
-		var dot_mat := SoftGeometry.material(Color("c3dec3"))
-		dot_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
-		dot.material_override = dot_mat
-		add_child(dot)
-		trajectory.append(dot)
-		dot.cast_shadow = GeometryInstance3D.SHADOW_CASTING_SETTING_OFF
+	trajectory.resize(22)
 
 func _ring(radius: float,thickness: float,color: Color) -> MeshInstance3D:
 	var result := MeshInstance3D.new()
@@ -210,8 +200,6 @@ func restart() -> void:
 	cooldown=0.3
 	sim.spill_enabled=not lab_mode
 	queue.assign([0,1,0])
-	for effect in effects: effect.node.queue_free()
-	effects.clear()
 	hud.clear_scores()
 	sim.spawn(2,Vector3(-0.7,1.3,-0.65))
 	sim.spawn(1,Vector3(0.95,1.0,0.1))
@@ -358,25 +346,14 @@ func _process(delta: float) -> void:
 	held.position=launch
 	var show_aim := screen in [Screen.PLAY,Screen.PAUSE,Screen.CONFIRM_RESET] or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
 	held.visible=show_aim and not game_over and cooldown<=0
+	aim_visible=show_aim and not game_over
 	var velocity := _launch_velocity()
 	var flight := _landing_time(velocity)
 	for i in trajectory.size():
 		var t := flight*(i+1)/float(trajectory.size())
-		trajectory[i].position=launch+velocity*t+Vector3.DOWN*sim.gravity*t*t*0.5
-		trajectory[i].visible=show_aim and not game_over
+		trajectory[i]=launch+velocity*t+Vector3.DOWN*sim.gravity*t*t*0.5
 	target=launch+velocity*flight+Vector3.DOWN*sim.gravity*flight*flight*0.5
-	target_ring.visible=show_aim and not game_over
-	target_ring.position=Vector3(target.x,0.075*(target.x*target.x+target.z*target.z)+0.04,target.z)
-	for i in range(effects.size()-1,-1,-1):
-		if not paused: effects[i].time+=delta
-		var effect: Dictionary=effects[i]
-		var node: MeshInstance3D=effect.node
-		node.scale=Vector3.ONE*(1+effect.time*3)
-		if not paused: node.position.y+=delta*0.5
-		node.transparency=minf(1,effect.time*1.6)
-		if effect.time>0.6:
-			node.queue_free()
-			effects.remove_at(i)
+	landing_marker=Vector3(target.x,0.075*(target.x*target.x+target.z*target.z)+0.04,target.z)
 	if demo and not paused and not game_over:
 		demo_timer+=delta
 		if demo_timer>1.0:
@@ -390,10 +367,7 @@ func _process(delta: float) -> void:
 func _on_merge(at: Vector3,tier: int,points_awarded: int) -> void:
 	score+=points_awarded
 	hud.show_score(at,points_awarded,SoftBall.COLORS[tier])
-	var ring := _ring(SoftBall.RADII[tier]*0.7,0.035,SoftBall.COLORS[tier])
-	add_child(ring)
-	ring.position=at
-	effects.append({"node":ring,"time":0.0})
+	hud.show_merge_stars(at,tier)
 	_tone(330*pow(1.18,tier),0.18)
 
 func _tone(frequency: float,duration: float) -> void:

@@ -21,6 +21,7 @@ var sliders: Dictionary = {}
 var lab_button: Button
 var slow_button: Button
 var score_popups: Array[Dictionary] = []
+var merge_stars: Array[Dictionary] = []
 var notice := ""
 var notice_time := 0.0
 var slider_specs := [
@@ -173,8 +174,17 @@ func sync_options() -> void:
 func show_score(at: Vector3,points_awarded: int,color: Color) -> void:
 	score_popups.append({"at":at,"points":points_awarded,"color":color.lightened(0.45),"time":0.0})
 
+func show_merge_stars(at: Vector3,tier: int) -> void:
+	# Deterministic cosmetic variation never consumes the gameplay random stream.
+	for i in 12:
+		var theta := TAU*i/12.0+tier*0.43
+		var speed := 1.5+(i%3)*0.4
+		var velocity := Vector3(cos(theta)*speed,1.2+(i%4)*0.35,sin(theta)*speed)
+		merge_stars.append({"at":at,"velocity":velocity,"time":0.0,"life":0.75+(i%3)*0.12,"rotation":theta,"size":12.0+(i%3)*3.0,"spark":i%3==2})
+
 func clear_scores() -> void:
 	score_popups.clear()
+	merge_stars.clear()
 	notice_time=0
 
 func show_notice(text: String) -> void:
@@ -183,6 +193,9 @@ func show_notice(text: String) -> void:
 
 func _process(delta: float) -> void:
 	if not game.paused:
+		for i in range(merge_stars.size()-1,-1,-1):
+			merge_stars[i].time+=delta
+			if merge_stars[i].time>=merge_stars[i].life: merge_stars.remove_at(i)
 		for i in range(score_popups.size()-1,-1,-1):
 			score_popups[i].time+=delta
 			if score_popups[i].time>=1.4: score_popups.remove_at(i)
@@ -232,6 +245,8 @@ func _draw_menu() -> void:
 	text_at("A small experiment in squishy things.",Vector2(136,444),19,MUTED)
 
 func _draw_game() -> void:
+	_draw_aim()
+	_draw_merge_stars()
 	centered("%04d" % game.score,Vector2(720,85),48)
 	centered("POINTS",Vector2(720,112),11,MUTED)
 	draw_line(Vector2(82,212),Vector2(82,742),Color("3a5457"),1)
@@ -262,6 +277,67 @@ func _draw_game() -> void:
 		var color: Color=popup.color
 		color.a=alpha
 		text_at(text,origin,size_px,color)
+
+func _star_world(star: Dictionary,time: float) -> Vector3:
+	return star.at+star.velocity*time+Vector3.DOWN*time*time*1.6
+
+func _draw_merge_stars() -> void:
+	for star in merge_stars:
+		var time: float=star.time
+		var world := _star_world(star,time)
+		if game.camera.is_position_behind(world): continue
+		var head: Vector2=game.camera.unproject_position(world)
+		var alpha := (1.0-smoothstep(star.life*0.48,star.life,time))*smoothstep(0.0,0.06,time)
+		var radius: float=star.size*lerpf(1.0,0.45,time/star.life)
+		# Layered, tapered trails give the shooting-star colour without relying
+		# on renderer-specific bloom. Their origin remains attached to the merge.
+		if not star.spark:
+			for segment in 6:
+				var t0 := maxf(0,time-0.3+segment*0.3/6.0)
+				var t1 := maxf(0,time-0.3+(segment+1)*0.3/6.0)
+				var a: Vector2=game.camera.unproject_position(_star_world(star,t0))
+				var b: Vector2=game.camera.unproject_position(_star_world(star,t1))
+				var progress := (segment+1)/6.0
+				var trail := Color("9858ff").lerp(Color("ff8ac7"),progress)
+				trail.a=alpha*progress*0.14
+				draw_line(a,b,trail,radius*1.9*progress,true)
+				trail.a=alpha*progress*0.8
+				draw_line(a,b,trail,radius*0.85*progress,true)
+		if star.spark:
+			draw_circle(head,3.5,Color(0.74,0.54,1.0,alpha),true,-1,true)
+			draw_circle(head,6.5,Color(0.65,0.32,1.0,alpha*0.15),true,-1,true)
+			continue
+		var outline := PackedVector2Array()
+		for corner in 10:
+			var theta: float=corner*PI/5.0+star.rotation+time*1.7
+			outline.append(head+Vector2(cos(theta),sin(theta))*radius*(1.0 if corner%2==0 else 0.48))
+		var glow := PackedVector2Array()
+		for point in outline: glow.append(head+(point-head)*1.22)
+		draw_colored_polygon(glow,Color(1.0,0.72,0.24,alpha*0.18))
+		draw_colored_polygon(outline,Color(1.0,0.86,0.38,alpha))
+		draw_circle(head+Vector2(-0.2,-0.25)*radius,radius*0.22,Color(1.0,0.98,0.75,alpha*0.8),true,-1,true)
+
+func _draw_aim() -> void:
+	if not game.aim_visible: return
+	var outline := Color("152b32")
+	var fill := Color("fff2ca")
+	# Project the real ballistic path, but keep its contrast and pixel size
+	# independent of lighting, zoom, and transparent shells in front of it.
+	for i in game.trajectory.size():
+		var world: Vector3=game.trajectory[i]
+		if game.camera.is_position_behind(world): continue
+		var at: Vector2=game.camera.unproject_position(world)
+		var radius := 2.8 if i%3==0 else 2.0
+		draw_circle(at,radius+1.4,outline,true,-1,true)
+		draw_circle(at,radius,fill,true,-1,true)
+	var ring := PackedVector2Array()
+	for i in 49:
+		var theta := TAU*i/48.0
+		var world: Vector3=game.landing_marker+Vector3(cos(theta),0,sin(theta))*0.27
+		if game.camera.is_position_behind(world): return
+		ring.append(game.camera.unproject_position(world))
+	draw_polyline(ring,outline,5.0,true)
+	draw_polyline(ring,fill,2.0,true)
 
 func _cell_icon(at: Vector2,radius: float,color: Color) -> void:
 	draw_circle(at,radius,Color(color.r,color.g,color.b,0.13))

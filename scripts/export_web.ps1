@@ -15,9 +15,10 @@ if ($exportProcess.ExitCode -ne 0) { throw "Godot export failed ($($exportProces
 foreach ($requiredFile in @('index.html', 'index.js', 'index.pck', 'index.wasm')) {
     if (!(Test-Path -LiteralPath (Join-Path $buildPath $requiredFile))) { throw "Missing export: $requiredFile" }
 }
-Get-ChildItem -LiteralPath $buildPath -File | Where-Object { $_.Name -like 'index.*' } | ForEach-Object {
+$exportFiles = Get-ChildItem -LiteralPath $buildPath -File | Where-Object { $_.Name -like 'index.*' -and $_.Extension -ne '.import' }
+$exportFiles | ForEach-Object {
     Copy-Item -LiteralPath $_.FullName -Destination $publishPath -Force
 }
 New-Item -ItemType File -Path (Join-Path $publishPath '.nojekyll') -Force | Out-Null
-Compress-Archive -Path (Join-Path $buildPath 'index.*') -DestinationPath (Join-Path $projectPath 'build\SoftMountain-Web.zip') -Force
+Compress-Archive -LiteralPath $exportFiles.FullName -DestinationPath (Join-Path $projectPath 'build\SoftMountain-Web.zip') -Force
 Write-Host 'Browser build ready in docs/. Commit those files and push main to update GitHub Pages.'
