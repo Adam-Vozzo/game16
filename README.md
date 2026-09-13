@@ -25,7 +25,7 @@ The bowl starts with three different tiers so there is something to interact wit
 | P / Escape | Pause/resume |
 | R | Start a fresh bowl |
 
-The on-screen buttons also expose the main controls. Material sliders apply to **all existing and new balls** immediately. Collision lab is useful for comparing sustained contact between balls of any tier. The lab allows up to 44 balls; reset to clear them.
+**Dough is the default material.** The on-screen buttons also expose the main controls. Material sliders apply to **all existing and new balls** immediately. Collision lab is useful for comparing sustained contact between balls of any tier. The lab allows up to 44 balls; reset to clear them.
 
 ## Soft-body implementation
 
@@ -53,9 +53,12 @@ All geometry and sound are generated in Godot, making the prototype easy to chan
 ```sh
 godot --headless --path . --editor --import --quit
 godot --headless --path . --script res://tests/physics_tests.gd
+godot --headless --path . --script res://tests/merge_tests.gd
 ```
 
-Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world.
+Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world. Merge regressions cover grounded merges across all presets, crowded contacts, inherited airborne movement, and expiry of the settling guard.
+
+For 0.5 seconds after a merge, the child and its immediate contact neighbours receive a kinetic-energy guard. Position corrections still separate overlapping geometry and recover shape, but cannot add translational or internal kinetic energy above that supplied by integration. This intentionally softens impacts near a newborn body, preventing a larger shell intersecting the bowl or the pile from becoming an explosive impulse. Genuine inherited travel is retained; the guard expires in simulation time, including in slow motion.
 
 For an unattended visual smoke test:
 

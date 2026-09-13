@@ -12,9 +12,9 @@ const ITERATIONS := 2
 const MAX_BALLS := 44
 var topology := SoftGeometry.cage()
 var balls: Array[SoftBall] = []
-var stiffness := 0.22
-var recovery := 0.008
-var damping := 0.045
+var stiffness := 0.10
+var recovery := 0.004
+var damping := 0.085
 var gravity := 9.8
 var merges_enabled := true
 var bowl_enabled := true
@@ -56,6 +56,7 @@ func step(delta: float) -> void:
 							second.alive = false
 							_merge(first,second)
 		# Defer all mutation of the active collection until pair iteration finishes.
+		for ball in balls: ball.finish_substep()
 		_flush_merges()
 		for ball in balls: ball.update_center()
 	for ball in balls:
@@ -78,7 +79,9 @@ func _flush_merges() -> void:
 		merge.a.dispose()
 		merge.b.dispose()
 		var child := spawn(merge.tier,merge.at,merge.velocity)
-		# New tier has nearly the sum of the parent volumes; no explosive impulse.
+		# The larger shell can initially intersect supports and adjacent balls.
+		# Let it de-penetrate without converting that correction into a launch.
+		child.merge_settle_remaining=SoftBall.MERGE_SETTLE_SECONDS
 		child.age = 0.0
 		merged.emit(merge.at,merge.tier,10*(1 << merge.tier))
 	pending_merges.clear()
@@ -109,6 +112,11 @@ func _contact(a: SoftBall,b: SoftBall) -> bool:
 	for p in b.points: min_b = minf(min_b,p.dot(normal))
 	var overlap := max_a-min_b+0.018
 	if overlap <= 0.0: return false
+	# Protect direct neighbours too, so the new shell cannot kick the pile apart.
+	# Do not propagate the timer: ordinary collisions resume after the birth window.
+	if a.merge_settle_remaining>0.0 or b.merge_settle_remaining>0.0:
+		a.stabilize_this_substep=true
+		b.stabilize_this_substep=true
 	# Resolve a patch of shell vertices against a shared separating plane.
 	# Equal/opposite corrections conserve the pair's mass-weighted center.
 	var plane := (max_a*b.mass+min_b*a.mass)/(a.mass+b.mass)

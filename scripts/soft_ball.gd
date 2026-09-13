@@ -21,6 +21,11 @@ var velocity := Vector3.ZERO
 var rest_volume: float
 var bound: float
 var age := 0.0
+const MERGE_SETTLE_SECONDS := 0.5
+var merge_settle_remaining := 0.0
+var stabilize_this_substep := false
+var translation_budget := 0.0
+var internal_budget := 0.0
 var previous_dt := 1.0/180.0
 var escaped_time := 0.0
 var alive := true
@@ -72,6 +77,32 @@ func integrate(dt: float, gravity: float, damping: float) -> void:
 		points[i] += mean_motion*0.999 + (motion-mean_motion)*(1.0-damping) + Vector3.DOWN*gravity*dt*dt
 		previous[i] = old
 	previous_dt = dt
+	# Record the motion supplied by integration, before overlap/shape projection.
+	# A short merge-only guard prevents those corrections creating kinetic energy.
+	var predicted_motion := Vector3.ZERO
+	for i in points.size(): predicted_motion+=points[i]-previous[i]
+	predicted_motion/=points.size()
+	translation_budget=predicted_motion.length()
+	internal_budget=0.0
+	for i in points.size(): internal_budget+=(points[i]-previous[i]-predicted_motion).length_squared()
+	stabilize_this_substep=merge_settle_remaining>0.0
+	merge_settle_remaining=maxf(0.0,merge_settle_remaining-dt)
+
+func finish_substep() -> void:
+	if not stabilize_this_substep: return
+	var mean_motion := Vector3.ZERO
+	for i in points.size(): mean_motion+=points[i]-previous[i]
+	mean_motion/=points.size()
+	var internal_energy := 0.0
+	for i in points.size(): internal_energy+=(points[i]-previous[i]-mean_motion).length_squared()
+	# Keep collision response directions, but prevent new translation or internal
+	# energy from a newly overlapping shell. Position corrections remain intact.
+	var limited_mean := mean_motion.limit_length(translation_budget)
+	var internal_scale := minf(1.0,sqrt(internal_budget/maxf(internal_energy,0.000000000001)))
+	for i in points.size():
+		var motion := limited_mean+(points[i]-previous[i]-mean_motion)*internal_scale
+		previous[i]=points[i]-motion
+	velocity=limited_mean/previous_dt
 
 func constrain(stiffness: float, recovery: float) -> void:
 	# Distance constraints distribute a local dent through the shell.

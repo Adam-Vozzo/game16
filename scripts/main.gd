@@ -10,7 +10,7 @@ var paused := false
 var game_over := false
 var lab_mode := false
 var slow_motion := false
-var material_index := 0
+var material_index := 2
 var angle := 0.22
 var zoom := 13.6
 var target := Vector3(0,0.65,0)
@@ -45,6 +45,7 @@ func _ready() -> void:
 	sound = AudioStreamPlayer.new()
 	sound.volume_db = -16
 	add_child(sound)
+	set_material(material_index)
 	restart()
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--demo": demo=true
