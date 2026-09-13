@@ -9,6 +9,7 @@ const RADII: Array[float] = [0.39,0.49,0.62,0.78,0.98,1.24,1.56,1.97]
 var tier: int
 var radius: float
 var mass: float
+var base_mass: float
 var points := PackedVector3Array()
 var previous := PackedVector3Array()
 var rest := PackedVector3Array()
@@ -37,6 +38,7 @@ func _init(level: int, origin: Vector3, initial_velocity: Vector3, topology: Dic
 	tier = clampi(level,0,RADII.size()-1)
 	radius = RADII[tier]
 	mass = pow(radius/RADII[0],3.0)
+	base_mass=mass
 	faces = topology.faces
 	edges = topology.edges
 	for v in topology.vertices:
@@ -104,7 +106,12 @@ func finish_substep() -> void:
 		previous[i]=points[i]-motion
 	velocity=limited_mean/previous_dt
 
-func constrain(stiffness: float, recovery: float) -> void:
+func constrain(stiffness: float, recovery: float, weight: float = 1.0) -> void:
+	# Density raises load relative to elasticity, not gravitational acceleration.
+	# Rescale each constraint's response per iteration by inverse material weight.
+	stiffness=1.0-pow(1.0-stiffness,1.0/weight)
+	recovery=1.0-pow(1.0-recovery,1.0/weight)
+	var volume_response := 1.0-pow(1.0-0.65,1.0/weight)
 	# Distance constraints distribute a local dent through the shell.
 	for e in edges.size():
 		var a := int(edges[e].x)
@@ -133,7 +140,7 @@ func constrain(stiffness: float, recovery: float) -> void:
 	var denominator := 0.0
 	for g in gradients: denominator += g.length_squared()
 	if denominator > 0.0000001:
-		var lambda := clampf((rest_volume-current_volume)/denominator,-radius,radius)*0.65
+		var lambda := clampf((rest_volume-current_volume)/denominator,-radius,radius)*volume_response
 		for i in points.size(): points[i] += gradients[i]*lambda
 	# Rotation-invariant radial recovery. Low enough for sustained contact dents.
 	for i in points.size():

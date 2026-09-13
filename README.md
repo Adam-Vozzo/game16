@@ -2,7 +2,9 @@
 
 A playable Godot prototype about tossing soft coloured spheres into a ceramic bowl. Matching tiers merge; different tiers compress, wobble, and push each other. No fruit, imported art, paid assets, or addons.
 
-![Soft Mountain prototype](docs/prototype.png)
+![Soft Mountain main menu](docs/menu.png)
+
+![Soft Mountain gameplay](docs/prototype.png)
 
 ## Play
 
@@ -10,22 +12,25 @@ Open `project.godot` in **Godot 4.6+** and press **F5**. The regular Godot build
 
 A local standalone Windows build is available at `build/SoftMountain.exe` after exporting the **Windows Desktop** preset. Builds are excluded from source control. The prototype was developed and tested with Godot 4.6.1; the local executable is exported with the installed Godot 4.7.2 templates.
 
-The bowl starts with three different tiers so there is something to interact with immediately. Aim at the bowl, then hold and release the left mouse button or Space to throw. Holding increases the height of the lob. The dotted arc previews the flight of the center of the ball; it does not predict collisions with the pile. Same-tier contact creates the next larger tier and awards points. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
+The main menu offers **Play** and **Options**. Play starts a bowl with three different tiers. Rotate around the bowl with A/D, raise or lower the throw angle with W/S, then click or press Space to toss immediately. Mouse position and hold duration do not affect the throw. The dotted arc previews the ballistic center path to the bowl plus the queued ball's radius; it does not predict collisions with the pile. Same-tier contact creates the next larger tier and awards points, which float up from the merge and fade away. The eight tiers approximately double in volume at each merge. Tier 8 stays in play and cannot merge further. A ball that escapes the bowl ends the round.
 
 | Input | Action |
 | --- | --- |
-| Mouse | Aim |
-| Hold/release left mouse or Space | Charge and throw |
+| Click or Space | Throw once, immediately |
 | A / D, left / right arrows | Orbit the bowl and throwing position |
-| Right-drag | Orbit with mouse |
+| W / S, up / down arrows | Raise / lower the throw trajectory |
 | Wheel | Zoom |
-| 1 / 2 / 3 | Balloon / foam / dough material |
-| L | Toggle collision lab: no merging or game over |
-| T | Toggle quarter-speed simulation |
-| P / Escape | Pause/resume |
-| R | Start a fresh bowl |
+| P / Escape | Pause/resume; close Options back to its parent menu |
+| Pause → New bowl | Start a fresh bowl |
+| Pause → Options | Material tuning, collision lab, slow motion |
 
-**Dough is the default material.** The on-screen buttons also expose the main controls. Material sliders apply to **all existing and new balls** immediately. Collision lab is useful for comparing sustained contact between balls of any tier. The lab allows up to 44 balls; reset to clear them.
+**Dough is the default material.** The same Options modal is available from the main menu and Pause. It includes Balloon/Foam/Dough presets, firmness, shape recovery, internal damping, **weight**, **gravity**, and **bowl grip**, plus collision lab and quarter-speed simulation. Material settings apply to **all existing and new balls** immediately and persist between rounds for the current session. Reset defaults restores dough, normal speed, and the standard game rules. Collision lab disables merging and spill loss, and allows up to 44 balls.
+
+Weight changes mass and the response of the elastic constraints, so greater weight compresses further under the same gravity. It does not make a freely falling ball accelerate faster. Gravity independently adjusts downward acceleration; bowl grip affects sliding resistance against the bowl. These are artistic development controls, not calibrated physical units for a particular real material.
+
+Pause and Options freeze physics and block throws and camera controls. Closing Options returns to the menu that opened it. In gameplay, score is centered at the top, the tier ladder ascends along the left, and upcoming throws sit on the right; controls stay at the bottom.
+
+![Material and motion options](docs/options.png)
 
 ## Soft-body implementation
 
@@ -45,6 +50,8 @@ The rendered surface subdivides the cage into 162 vertices and 320 smooth-shaded
 - `scripts/main.gd` — input, throws, camera, lighting, effects and sound.
 - `scripts/hud.gd` — interface and live tuning.
 - `tests/physics_tests.gd` — deterministic simulation regressions.
+- `tests/merge_tests.gd` — merge stability regressions.
+- `tests/ui_tests.gd` — menu navigation, input isolation, score popups, and material tuning.
 
 All geometry and sound are generated in Godot, making the prototype easy to change without a Blender or Aseprite asset pipeline.
 
@@ -54,6 +61,7 @@ All geometry and sound are generated in Godot, making the prototype easy to chan
 godot --headless --path . --editor --import --quit
 godot --headless --path . --script res://tests/physics_tests.gd
 godot --headless --path . --script res://tests/merge_tests.gd
+godot --headless --path . --script res://tests/ui_tests.gd
 ```
 
 Tests cover resting shape, impact deformation and recovery, volume, mixed-tier collision, two- and three-way merges, the terminal tier, stack stability, timestep changes, escape detection, and clearing the world. Merge regressions cover grounded merges across all presets, crowded contacts, inherited airborne movement, and expiry of the settling guard.
@@ -64,6 +72,8 @@ For an unattended visual smoke test:
 
 ```sh
 godot --path . -- --demo --capture-frame=1800
+godot --path . -- --capture-frame=60 --capture-name=menu
+godot --path . -- --options --capture-frame=60 --capture-name=options
 ```
 
 This throws automatically, writes `captures/prototype.png`, then exits. `--demo` is a developer aid, not part of normal play.

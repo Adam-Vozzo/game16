@@ -16,6 +16,11 @@ var stiffness := 0.10
 var recovery := 0.004
 var damping := 0.085
 var gravity := 9.8
+var bowl_grip := 0.065
+var weight_scale := 1.0:
+	set(value):
+		weight_scale=clampf(value,0.25,3.0)
+		for ball in balls: ball.mass=ball.base_mass*weight_scale
 var merges_enabled := true
 var bowl_enabled := true
 var spill_enabled := true
@@ -25,6 +30,7 @@ var visual_parent: Node3D
 
 func spawn(tier: int, at: Vector3, velocity: Vector3 = Vector3.ZERO) -> SoftBall:
 	var ball := SoftBall.new(tier,at,velocity,topology)
+	ball.mass=ball.base_mass*weight_scale
 	balls.append(ball)
 	if is_instance_valid(visual_parent): ball.create_visual(visual_parent)
 	return ball
@@ -41,7 +47,7 @@ func step(delta: float) -> void:
 		for ball in balls: ball.integrate(dt,gravity,damping)
 		for iteration in ITERATIONS:
 			for ball in balls:
-				ball.constrain(stiffness,recovery)
+				ball.constrain(stiffness,recovery,weight_scale)
 				_environment(ball)
 			for a in balls.size():
 				for b in range(a+1,balls.size()):
@@ -100,7 +106,7 @@ func _environment(ball: SoftBall) -> void:
 			ball.points[i] += normal*penetration
 			var motion := ball.points[i]-ball.previous[i]
 			var tangent := motion-normal*motion.dot(normal)
-			ball.previous[i] += tangent*0.065
+			ball.previous[i] += tangent*bowl_grip
 
 func _contact(a: SoftBall,b: SoftBall) -> bool:
 	var offset := b.center-a.center

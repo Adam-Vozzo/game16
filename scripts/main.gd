@@ -1,25 +1,30 @@
 extends Node3D
 
+enum Screen { MENU, PLAY, PAUSE, OPTIONS, GAME_OVER }
+const MATERIALS := [[0.22,0.008,0.045],[0.30,0.003,0.12],[0.10,0.004,0.085]]
+const MIN_ELEVATION := -12.0
+const MAX_ELEVATION := 68.0
+const THROW_SPEED := 6.4
+var screen := Screen.MENU
+var options_return := Screen.MENU
 var sim := SoftSimulation.new()
 var camera: Camera3D
 var hud: Control
 var queue: Array[int] = [0,1,0]
 var rng := RandomNumberGenerator.new()
 var score := 0
-var paused := false
+var paused: bool:
+	get: return screen!=Screen.PLAY
 var game_over := false
 var lab_mode := false
 var slow_motion := false
 var material_index := 2
 var angle := 0.22
-var zoom := 13.6
+var zoom := 11.8
 var target := Vector3(0,0.65,0)
 var launch := Vector3.ZERO
-var charging := false
-var charge := 0.0
+var throw_elevation := 24.0
 var cooldown := 0.0
-var message := ""
-var message_time := 0.0
 var held: MeshInstance3D
 var target_ring: MeshInstance3D
 var trajectory: Array[MeshInstance3D] = []
@@ -30,13 +35,14 @@ var frame := 0
 var demo := false
 var demo_timer := 0.0
 var simulation_accumulator := 0.0
+var capture_name := "prototype"
 
 func _ready() -> void:
 	rng.randomize()
 	_build_stage()
 	sim.visual_parent = self
 	sim.merged.connect(_on_merge)
-	sim.spilled.connect(func(): game_over=true; charging=false)
+	sim.spilled.connect(func(): game_over=true; set_screen(Screen.GAME_OVER))
 	var layer := CanvasLayer.new()
 	add_child(layer)
 	hud = load("res://scripts/hud.gd").new()
@@ -47,9 +53,17 @@ func _ready() -> void:
 	add_child(sound)
 	set_material(material_index)
 	restart()
+	# Settle the decorative bowl once before showing the main menu.
+	for i in 100: sim.step(1.0/60.0)
+	set_screen(Screen.MENU)
 	for arg in OS.get_cmdline_user_args():
 		if arg == "--demo": demo=true
+		if arg.begins_with("--capture-name="): capture_name=arg.get_slice("=",1).validate_filename()
 		if arg.begins_with("--capture-frame="): screenshot_frame=int(arg.get_slice("=",1))
+	if demo:
+		rng.seed=16
+		restart()
+	if "--options" in OS.get_cmdline_user_args(): open_options()
 
 func _build_stage() -> void:
 	var environment := WorldEnvironment.new()
@@ -144,25 +158,39 @@ func _ring(radius: float,thickness: float,color: Color) -> MeshInstance3D:
 	result.material_override = SoftGeometry.material(color)
 	return result
 
+func set_screen(value: Screen) -> void:
+	screen=value
+	_update_camera()
+	if is_instance_valid(hud): hud.sync_screen()
+
+func open_options() -> void:
+	if screen==Screen.OPTIONS: return
+	options_return=screen
+	set_screen(Screen.OPTIONS)
+
+func close_options() -> void:
+	set_screen(options_return)
+
+func show_main_menu() -> void:
+	set_screen(Screen.MENU)
+
 func restart() -> void:
 	sim.clear()
 	score=0
 	game_over=false
-	paused=false
-	charging=false
-	charge=0
+	throw_elevation=24.0
 	simulation_accumulator=0
 	cooldown=0.3
 	sim.spill_enabled=not lab_mode
 	queue.assign([0,1,0])
 	for effect in effects: effect.node.queue_free()
 	effects.clear()
+	hud.clear_scores()
 	sim.spawn(2,Vector3(-0.7,1.3,-0.65))
 	sim.spawn(1,Vector3(0.95,1.0,0.1))
 	sim.spawn(0,Vector3(-1.25,0.9,0.65))
 	_update_held()
-	message="Same colours meet. Something bigger happens."
-	message_time=5
+	set_screen(Screen.PLAY)
 
 func _update_held() -> void:
 	var sphere := SphereMesh.new()
@@ -176,8 +204,9 @@ func _update_held() -> void:
 func _update_camera() -> void:
 	camera.position=Vector3(sin(angle)*15,12,cos(angle)*15)
 	camera.look_at(Vector3(0,0.5,0))
-	camera.position+=camera.basis.x*1.6
-	camera.size=zoom
+	var menu_backdrop := screen==Screen.MENU or (screen==Screen.OPTIONS and options_return==Screen.MENU)
+	camera.position+=camera.basis.x*(-3.55 if menu_backdrop else 0.0)
+	camera.size=13.5 if menu_backdrop else zoom
 	launch=Vector3(sin(angle)*5.05,3.25,cos(angle)*5.05)
 
 func orbit(amount: float) -> void:
@@ -185,123 +214,115 @@ func orbit(amount: float) -> void:
 	_update_camera()
 
 func _input(event: InputEvent) -> void:
-	# Release must be seen even after the pointer crosses a HUD control.
-	if event is InputEventMouseButton and event.button_index==MOUSE_BUTTON_LEFT and not event.pressed and charging:
-		toss()
-		charging=false
-	if event is InputEventKey and event.keycode==KEY_SPACE and not event.pressed and charging:
-		toss()
-		charging=false
+	# Escape works even while a slider has keyboard focus.
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode in [KEY_ESCAPE,KEY_P]:
+		toggle_pause()
+		get_viewport().set_input_as_handled()
 
 func _unhandled_input(event: InputEvent) -> void:
-	if event is InputEventMouseMotion:
-		if Input.is_mouse_button_pressed(MOUSE_BUTTON_RIGHT): orbit(-event.relative.x*0.006)
-		elif event.position.x < 1090 and event.position.y < 670:
-			var ray_start := camera.project_ray_origin(event.position)
-			var ray_dir := camera.project_ray_normal(event.position)
-			var hit: Variant = Plane(Vector3.UP,0.65).intersects_ray(ray_start,ray_dir)
-			if hit != null:
-				var flat := Vector2(hit.x,hit.z).limit_length(3.3)
-				target=Vector3(flat.x,0.65+0.075*flat.length_squared(),flat.y)
+	if paused: return
 	if event is InputEventMouseButton:
-		if event.button_index == MOUSE_BUTTON_LEFT:
-			if event.pressed and event.position.x < 1090 and event.position.y < 670 and not paused and not game_over:
-				charging=true
-				charge=0
-			elif not event.pressed and charging:
-				toss()
-				charging=false
+		if event.button_index==MOUSE_BUTTON_LEFT and event.pressed: toss()
 		if event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_UP:
 			zoom=clampf(zoom-0.5,10.5,17)
 			_update_camera()
 		if event.pressed and event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
 			zoom=clampf(zoom+0.5,10.5,17)
 			_update_camera()
-	if event is InputEventKey and not event.echo:
-		if event.pressed:
-			match event.keycode:
-				KEY_R: restart()
-				KEY_P,KEY_ESCAPE: toggle_pause()
-				KEY_L: toggle_lab()
-				KEY_T: slow_motion=not slow_motion
-				KEY_1: set_material(0)
-				KEY_2: set_material(1)
-				KEY_3: set_material(2)
-				KEY_SPACE:
-					if not paused and not game_over: charging=true; charge=0
-		elif event.keycode == KEY_SPACE and charging:
-			toss()
-			charging=false
+	if event is InputEventKey and event.pressed and not event.echo and event.keycode==KEY_SPACE: toss()
+
+func adjust_elevation(amount: float) -> void:
+	throw_elevation=clampf(throw_elevation+amount,MIN_ELEVATION,MAX_ELEVATION)
 
 func _launch_velocity() -> Vector3:
-	var flight := lerpf(0.82,1.38,charge)
-	return (target-launch)/flight+Vector3.UP*sim.gravity*flight*0.5
+	var pitch := deg_to_rad(throw_elevation)
+	return Vector3(-sin(angle),0,-cos(angle))*cos(pitch)*THROW_SPEED+Vector3.UP*sin(pitch)*THROW_SPEED
+
+func _landing_time(velocity: Vector3) -> float:
+	# Intersect the ballistic center path with the bowl profile plus ball radius.
+	var origin_xz := Vector2(launch.x,launch.z)
+	var speed_xz := Vector2(velocity.x,velocity.z)
+	var a := -sim.gravity*0.5-0.075*speed_xz.length_squared()
+	var b := velocity.y-0.15*origin_xz.dot(speed_xz)
+	var c := launch.y-0.075*origin_xz.length_squared()-SoftBall.RADII[queue[0]]
+	return maxf(0.05,(-b-sqrt(maxf(0,b*b-4*a*c)))/(2*a))
 
 func toss() -> void:
 	if paused or game_over or cooldown>0: return
 	if sim.balls.size() >= SoftSimulation.MAX_BALLS:
-		message="Lab capacity reached. Press R for a fresh bowl."
-		message_time=3
+		hud.show_notice("Lab capacity reached. Start a new bowl from Pause.")
 		return
 	sim.spawn(queue.pop_front(),launch,_launch_velocity())
 	queue.append(rng.randi_range(0,2) if rng.randf()>0.4 else 0)
 	_update_held()
 	cooldown=0.65
-	charge=0
 	_tone(220,0.08)
 
 func toggle_pause() -> void:
-	if not game_over: paused=not paused
-	charging=false
+	match screen:
+		Screen.PLAY: set_screen(Screen.PAUSE)
+		Screen.PAUSE: set_screen(Screen.PLAY)
+		Screen.OPTIONS: close_options()
 
 func toggle_lab() -> void:
 	lab_mode=not lab_mode
 	sim.merges_enabled=not lab_mode
 	sim.spill_enabled=not lab_mode
-	game_over=false
-	message="Merging off. Stack, squish, and compare materials." if lab_mode else "Merging on. Keep every sphere in the bowl."
-	message_time=4
+	if lab_mode and game_over:
+		game_over=false
+		if screen==Screen.OPTIONS and options_return==Screen.GAME_OVER: options_return=Screen.PAUSE
+		if screen==Screen.GAME_OVER: set_screen(Screen.PAUSE)
 
 func set_material(index: int) -> void:
 	material_index=index
-	var values: Array = [[0.22,0.008,0.045],[0.30,0.003,0.12],[0.10,0.004,0.085]][index]
+	var values: Array = MATERIALS[index]
 	sim.stiffness=values[0]
 	sim.recovery=values[1]
 	sim.damping=values[2]
-	for i in 3: hud.sliders[i].set_value_no_signal(values[i])
-	message=["Balloon: soft, bouncy, a little under-filled.","Foam: cushioned impacts, leisurely recovery.","Dough: yielding, heavy, and slow to settle."][index]
-	message_time=4
+	hud.sync_options()
+
+func reset_options() -> void:
+	sim.weight_scale=1.0
+	sim.gravity=9.8
+	sim.bowl_grip=0.065
+	slow_motion=false
+	if lab_mode: toggle_lab()
+	set_material(2)
 
 func _physics_process(delta: float) -> void:
 	if not paused and not game_over:
 		simulation_accumulator+=delta*(0.25 if slow_motion else 1.0)
-		while simulation_accumulator>=1.0/60.0:
+		while simulation_accumulator>=1.0/60.0 and not paused:
 			sim.step(1.0/60.0)
 			simulation_accumulator-=1.0/60.0
 
 func _process(delta: float) -> void:
 	frame+=1
-	message_time=maxf(0,message_time-delta)
-	cooldown=maxf(0,cooldown-delta)
-	if charging: charge=minf(1,charge+delta*0.85)
-	if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*0.9)
-	if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*0.9)
+	if not paused:
+		cooldown=maxf(0,cooldown-delta)
+		if Input.is_physical_key_pressed(KEY_A) or Input.is_physical_key_pressed(KEY_LEFT): orbit(-delta*0.9)
+		if Input.is_physical_key_pressed(KEY_D) or Input.is_physical_key_pressed(KEY_RIGHT): orbit(delta*0.9)
+		if Input.is_physical_key_pressed(KEY_W) or Input.is_physical_key_pressed(KEY_UP): adjust_elevation(delta*32)
+		if Input.is_physical_key_pressed(KEY_S) or Input.is_physical_key_pressed(KEY_DOWN): adjust_elevation(-delta*32)
 	for ball in sim.balls: ball.update_visual()
 	held.position=launch
-	held.visible=not game_over and cooldown<=0
+	var show_aim := screen==Screen.PLAY or screen==Screen.PAUSE or (screen==Screen.OPTIONS and options_return==Screen.PAUSE)
+	held.visible=show_aim and not game_over and cooldown<=0
 	var velocity := _launch_velocity()
-	var flight := lerpf(0.82,1.38,charge)
+	var flight := _landing_time(velocity)
 	for i in trajectory.size():
 		var t := flight*(i+1)/float(trajectory.size())
 		trajectory[i].position=launch+velocity*t+Vector3.DOWN*sim.gravity*t*t*0.5
-		trajectory[i].visible=not game_over
+		trajectory[i].visible=show_aim and not game_over
+	target=launch+velocity*flight+Vector3.DOWN*sim.gravity*flight*flight*0.5
+	target_ring.visible=show_aim and not game_over
 	target_ring.position=Vector3(target.x,0.075*(target.x*target.x+target.z*target.z)+0.04,target.z)
 	for i in range(effects.size()-1,-1,-1):
-		effects[i].time+=delta
+		if not paused: effects[i].time+=delta
 		var effect: Dictionary=effects[i]
 		var node: MeshInstance3D=effect.node
 		node.scale=Vector3.ONE*(1+effect.time*3)
-		node.position.y+=delta*0.5
+		if not paused: node.position.y+=delta*0.5
 		node.transparency=minf(1,effect.time*1.6)
 		if effect.time>0.6:
 			node.queue_free()
@@ -310,15 +331,15 @@ func _process(delta: float) -> void:
 		demo_timer+=delta
 		if demo_timer>1.0:
 			demo_timer=0
-			target=Vector3(rng.randf_range(-1.7,1.7),0.8,rng.randf_range(-1.3,1.3))
+			orbit(rng.randf_range(-0.5,0.5))
+			throw_elevation=rng.randf_range(5,48)
 			toss()
 	if screenshot_frame>0 and frame==screenshot_frame:
 		_capture.call_deferred()
 
 func _on_merge(at: Vector3,tier: int,points_awarded: int) -> void:
 	score+=points_awarded
-	message="Tier %02d  +  Tier %02d   →   Tier %02d     +%d" % [tier,tier,tier+1,points_awarded]
-	message_time=2.5
+	hud.show_score(at,points_awarded,SoftBall.COLORS[tier])
 	var ring := _ring(SoftBall.RADII[tier]*0.7,0.035,SoftBall.COLORS[tier])
 	add_child(ring)
 	ring.position=at
@@ -343,6 +364,6 @@ func _tone(frequency: float,duration: float) -> void:
 func _capture() -> void:
 	await RenderingServer.frame_post_draw
 	DirAccess.make_dir_recursive_absolute("res://captures")
-	get_viewport().get_texture().get_image().save_png("res://captures/prototype.png")
+	get_viewport().get_texture().get_image().save_png("res://captures/%s.png" % capture_name)
 	print("CAPTURE_SAVED frame=",frame," balls=",sim.balls.size()," score=",score)
 	get_tree().quit()
